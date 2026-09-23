@@ -4,7 +4,7 @@
 
 <h1 align="center">Claude Codex Timer</h1>
 
-<p align="center">A daily head start for Claude and Codex.<br>One small ping, at the time you choose. Built for Mac.</p>
+<p align="center">Start your 5h usage limit window early, for Claude and Codex.<br>One small ping, at the time you choose. Built for Mac.</p>
 
 <p align="center">
   <a href="https://github.com/juan23abc/claude-codex-timer/releases/latest/download/ClaudeCodexTimer.dmg"><img alt="Download for Mac — DMG" src="https://img.shields.io/badge/Download_for_Mac-DMG-C26040?style=for-the-badge&logo=apple&logoColor=white"></a>
