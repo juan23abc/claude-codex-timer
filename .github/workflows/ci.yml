@@ -1,0 +1,17 @@
+name: Build and test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test isolated core behavior
+        run: swift test
+      - name: Build universal app
+        run: ./scripts/build-app.sh --universal
+      - name: Check shell syntax
+        run: bash -n install.sh uninstall.sh send-hi.sh scripts/build-app.sh

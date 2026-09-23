@@ -1,0 +1,15 @@
+.DS_Store
+.build/
+.swiftpm/
+dist/
+*.xcuserstate
+xcuserdata/
+.env
+.env.*
+!.env.example
+*.log
+*.jsonl
+*.pem
+*.p12
+*.mobileprovision
+docs/local-verification/
