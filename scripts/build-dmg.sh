@@ -18,9 +18,9 @@ codesign --verify --deep --strict "$APP_DIR"
 for BINARY in "$APP_DIR/Contents/MacOS/ClaudeCodexTimer" "$APP_DIR/Contents/Helpers/claude-codex-timer-runner"; do
   lipo "$BINARY" -verify_arch arm64 x86_64
 done
-WORK_DIR="$(mktemp -d "$PROJECT_DIR/dist/.dmg-build.XXXXXX")"
-# Finder stores the mount path in its background bookmark. Use a neutral path,
-# so the distributed .DS_Store never contains the maintainer's home directory.
+# Finder stores both image and mount paths in its background bookmark. Keep
+# both outside the workspace so .DS_Store cannot disclose a personal home path.
+WORK_DIR="$(mktemp -d /tmp/claude-codex-timer-package.XXXXXX)"
 MOUNT_DIR="$(mktemp -d /tmp/claude-codex-timer-dmg.XXXXXX)"
 cleanup() {
   if mount | grep -Fq " on $MOUNT_DIR "; then hdiutil detach "$MOUNT_DIR" -quiet || true; fi

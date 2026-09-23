@@ -20,6 +20,9 @@ APP_DIR="$STAGING_DIR/Claude Codex Timer.app"
 mkdir -p "$APP_DIR/Contents/"{MacOS,Helpers,Resources}
 cp "$BIN_DIR/ClaudeCodexTimer" "$APP_DIR/Contents/MacOS/ClaudeCodexTimer"
 cp "$BIN_DIR/claude-codex-timer-runner" "$APP_DIR/Contents/Helpers/claude-codex-timer-runner"
+# Swift's release binaries can retain object-file paths in debug symbols.
+# Keep those in local dSYMs, not in the distributed executables.
+xcrun strip -S "$APP_DIR/Contents/MacOS/ClaudeCodexTimer" "$APP_DIR/Contents/Helpers/claude-codex-timer-runner"
 cp Resources/Info.plist "$APP_DIR/Contents/Info.plist"
 cp LICENSE "$APP_DIR/Contents/Resources/LICENSE"
 if [[ ! -f Resources/AppIcon.icns || Resources/Icon/AppIcon.png -nt Resources/AppIcon.icns || scripts/make-icon.swift -nt Resources/AppIcon.icns ]]; then
