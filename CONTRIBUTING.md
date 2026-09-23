@@ -9,7 +9,7 @@ The project is maintained in a private repository and is awaiting a license deci
 - `Sources/CPTY/`: C shim for starting and cleaning up a controlling terminal or a pipe-backed subprocess. The child uses only C operations between `fork` and `execve`.
 - `Sources/ClaudeTimerRunner/`: independent background executable and command-line entry point.
 - `Tests/ClaudeTimerCoreTests/`: isolated behavior tests, including actual PTY subprocesses.
-- `Resources/`: app metadata and original icon; `scripts/make-icon.swift` is its vector source.
+- `Resources/`: app metadata and packaged icon. `Resources/Icon/` contains the supplied logo, cream-background artwork, and generation notes; `scripts/make-icon.swift` exports the macOS icon sizes.
 
 Build with `./scripts/build-app.sh`, then open `dist/Claude Codex Timer.app`. `swift run ClaudeTimer` is useful for UI iteration, but running pings from the GUI requires the packaged helper. Run `swift test` before submitting changes. Real provider tests consume account usage and should be run explicitly, never automatically in CI.
 

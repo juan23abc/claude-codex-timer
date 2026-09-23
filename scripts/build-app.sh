@@ -16,7 +16,7 @@ mkdir -p "$APP_DIR/Contents/"{MacOS,Helpers,Resources}
 cp "$BIN_DIR/ClaudeTimer" "$APP_DIR/Contents/MacOS/ClaudeTimer"
 cp "$BIN_DIR/claude-timer-runner" "$APP_DIR/Contents/Helpers/claude-timer-runner"
 cp Resources/Info.plist "$APP_DIR/Contents/Info.plist"
-if [[ ! -f Resources/AppIcon.icns ]]; then
+if [[ ! -f Resources/AppIcon.icns || Resources/Icon/AppIcon.png -nt Resources/AppIcon.icns || scripts/make-icon.swift -nt Resources/AppIcon.icns ]]; then
   mkdir -p .build/AppIcon.iconset
   swift scripts/make-icon.swift .build/AppIcon.iconset
   iconutil -c icns .build/AppIcon.iconset -o Resources/AppIcon.icns

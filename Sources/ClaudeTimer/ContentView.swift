@@ -13,7 +13,11 @@ struct ContentView: View {
         NavigationSplitView {
             VStack(alignment: .leading, spacing: 22) {
                 HStack(spacing: 10) {
-                    Image(systemName: "timer").font(.system(size: 26, weight: .medium)).foregroundStyle(Theme.accent)
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 40, height: 40)
+                        .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Claude/Codex Timer").font(.headline).fixedSize(horizontal: false, vertical: true)
                         Text("A daily head start").font(.caption).foregroundStyle(.secondary)
