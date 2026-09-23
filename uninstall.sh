@@ -4,6 +4,7 @@ set -euo pipefail
 if [[ $# -ne 0 ]]; then echo "Usage: ./uninstall.sh" >&2; exit 2; fi
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 for RUNNER in \
+  "$PROJECT_DIR/dist/Claude Codex Timer.app/Contents/Helpers/claude-codex-timer-runner" \
   "$HOME/Library/Application Support/ClaudeTimer/bin/claude-timer-runner" \
   "$PROJECT_DIR/dist/Claude Codex Timer.app/Contents/Helpers/claude-timer-runner"; do
   if [[ -x "$RUNNER" ]]; then exec "$RUNNER" disable; fi

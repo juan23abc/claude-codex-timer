@@ -1,10 +1,10 @@
 import XCTest
-@testable import ClaudeTimerCore
+@testable import ClaudeCodexTimerCore
 
 final class CoreTests: XCTestCase {
     private var paths: AppPaths!
     override func setUpWithError() throws {
-        paths = AppPaths(home: FileManager.default.temporaryDirectory.appendingPathComponent("Claude Timer's tests \(UUID().uuidString)"))
+        paths = AppPaths(home: FileManager.default.temporaryDirectory.appendingPathComponent("Claude Codex Timer's tests \(UUID().uuidString)"))
         try paths.prepare()
     }
     override func tearDownWithError() throws { try FileManager.default.removeItem(at: paths.home) }
@@ -158,6 +158,37 @@ final class CoreTests: XCTestCase {
         XCTAssertTrue(scheduler.isEnabled)
         XCTAssertEqual(try Data(contentsOf: paths.agent), plist)
         XCTAssertEqual(try TimerSettings.load(paths: paths), original)
+    }
+    func testRenamedBundledRunnerPreservesExistingInstallation() throws {
+        let oldRoot = paths.home.appendingPathComponent("Library/Application Support/ClaudeTimer")
+        let oldRunner = oldRoot.appendingPathComponent("bin/claude-timer-runner")
+        let oldAgent = paths.home.appendingPathComponent("Library/LaunchAgents/io.claude-timer.daily.plist")
+        let settings = TimerSettings(hour: 8, minute: 30, claudePath: "/bin/echo", providers: [.claude])
+        try JSONEncoder().encode(settings).write(to: oldRoot.appendingPathComponent("settings.json"))
+        let record = RunRecord(outcome: .success, detail: "Existing pong", source: "scheduled")
+        let history = try JSONEncoder().encode([record])
+        try history.write(to: oldRoot.appendingPathComponent("history.json"))
+        try Data("old helper".utf8).write(to: oldRunner)
+
+        let bundledRunner = paths.home.appendingPathComponent("Claude Codex Timer.app/Contents/Helpers/claude-codex-timer-runner")
+        try FileManager.default.createDirectory(at: bundledRunner.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let script = Data("#!/bin/sh\nprintf 'Claude Codex Timer'\n".utf8)
+        try script.write(to: bundledRunner)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: bundledRunner.path)
+        let launchd = FakeLaunchd(loaded: ["io.claude-timer.daily"])
+        let scheduler = Scheduler(paths: paths, control: launchd.run)
+        try scheduler.plist(settings: settings).write(to: oldAgent)
+
+        XCTAssertEqual(try TimerSettings.load(paths: paths), settings)
+        try scheduler.enable(settings: settings, runner: bundledRunner)
+
+        XCTAssertEqual(launchd.loaded, ["io.claude-timer.daily"])
+        XCTAssertEqual(try Data(contentsOf: oldRunner), script)
+        XCTAssertEqual(try LocalProcess.run(oldRunner.path, []).output, "Claude Codex Timer")
+        XCTAssertEqual(try TimerSettings.load(paths: paths), settings)
+        XCTAssertEqual(try Data(contentsOf: paths.history), history)
+        let plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: Data(contentsOf: oldAgent), format: nil) as? [String: Any])
+        XCTAssertEqual(plist["ProgramArguments"] as? [String], [oldRunner.path, "run", "--scheduled"])
     }
     func testFailedMigrationLeavesOriginalJobLoaded() throws {
         try installScript("exit 0\n")

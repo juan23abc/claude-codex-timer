@@ -13,5 +13,7 @@ jobs:
         run: swift test
       - name: Build universal app
         run: ./scripts/build-app.sh --universal
+      - name: Package universal disk image
+        run: ./scripts/build-dmg.sh --skip-build
       - name: Check shell syntax
-        run: bash -n install.sh uninstall.sh send-hi.sh scripts/build-app.sh
+        run: bash -n install.sh uninstall.sh ping.sh send-hi.sh scripts/*.sh

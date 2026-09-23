@@ -11,5 +11,8 @@ if [[ -d "$HOME/Applications/Claude Timer.app" && ! -e "$HOME/Applications/Claud
   fi
 fi
 ditto "$PROJECT_DIR/dist/Claude Codex Timer.app" "$HOME/Applications/Claude Codex Timer.app"
-"$HOME/Applications/Claude Codex Timer.app/Contents/Helpers/claude-timer-runner" enable "$@"
+# ditto merges directories; remove retired bundle executables after an upgrade.
+rm -f "$HOME/Applications/Claude Codex Timer.app/Contents/MacOS/ClaudeTimer" \
+  "$HOME/Applications/Claude Codex Timer.app/Contents/Helpers/claude-timer-runner"
+"$HOME/Applications/Claude Codex Timer.app/Contents/Helpers/claude-codex-timer-runner" enable "$@"
 echo "Open: $HOME/Applications/Claude Codex Timer.app"

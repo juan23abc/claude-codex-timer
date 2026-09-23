@@ -20,6 +20,9 @@ public enum TimerProvider: String, Codable, CaseIterable, Identifiable {
 public struct AppPaths {
     public let home: URL
     public init(home: URL = FileManager.default.homeDirectoryForCurrentUser) { self.home = home }
+    // Persistent names are compatibility identifiers, not product branding.
+    // Keep existing settings, history, Claude folder trust, and launchd jobs working.
+    // The newly named bundled helper is installed at the original runner path.
     public var root: URL { home.appendingPathComponent("Library/Application Support/ClaudeTimer") }
     public var workspace: URL { home.appendingPathComponent(".claude-timer") }
     public var codexWorkspace: URL { root.appendingPathComponent("codex-workspace") }

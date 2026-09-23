@@ -26,7 +26,7 @@ The release app and helper build for both `arm64` and `x86_64`. The bundle passe
 
 The installed app’s schedule migration, time editor, disabling, manual run, activity updates, and Terminal setup flow were exercised. A real calendar event launched the helper with the GUI fully stopped, recorded the account-limit failure, and exited cleanly. The final daily time was restored to 07:00. The Intel helper’s status command also ran under Rosetta.
 
-For version 1.1.0, the renamed Claude/Codex Timer app was installed and the native provider selector set to Both. A combined Run now recorded Claude’s usage-limit failure and then a successful Codex pong, each separately visible in the window. The daily schedule remains 07:00 for both providers. The installed background helper matches the bundled helper, and settings/history retain their existing compatible storage locations.
+For version 1.1.0, the renamed Claude Codex Timer app was installed and the native provider selector set to Both. A combined Run now recorded Claude’s usage-limit failure and then a successful Codex pong, each separately visible in the window. The daily schedule remains 07:00 for both providers. The installed background helper matches the bundled helper, and settings/history retain their existing compatible storage locations.
 
 ## Remaining limits
 
@@ -36,4 +36,10 @@ For version 1.1.0, the renamed Claude/Codex Timer app was installed and the nati
 - Built for Intel, but not run on physical Intel hardware. Runtime checks were on macOS 26.5.2; macOS 13 compatibility is a deployment target, not a completed hardware test.
 - Sleep/wake behavior follows macOS documentation; a physical sleep/wake cycle has not been tested here.
 - The binary is not Developer ID signed or notarized for public distribution.
-- License selection is intentionally deferred. Private GitHub storage is authorized; public visibility and release publication are not.
+- The project now uses the MIT license. Redistribution rights for the supplied brand artwork remain a separate review item; see [artwork notes](../Resources/Icon/README.md).
+
+## Publication preparation
+
+The Swift package, targets, source directories, imports, executable names, and app labels now use Claude Codex Timer naming. Persistent data paths, the bundle identifier, and LaunchAgent labels intentionally retain their original values for upgrade compatibility. A new regression test installs the renamed helper over an existing installation and verifies that settings, history, and the single schedule are preserved. The full suite now has 32 passing tests.
+
+The README includes three native app screenshots captured with debug-only sample fixtures; no real account history is shown. The release build excludes the fixture mode. A universal DMG contains the app and an Applications shortcut, and packaging creates a SHA-256 checksum. The first distribution remains ad-hoc signed, with the macOS first-open instructions documented.

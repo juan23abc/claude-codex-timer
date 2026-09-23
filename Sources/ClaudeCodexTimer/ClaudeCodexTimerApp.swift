@@ -10,11 +10,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @main
-struct ClaudeTimerApp: App {
+struct ClaudeCodexTimerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = AppModel()
     var body: some Scene {
-        Window("Claude/Codex Timer", id: "main") {
+        Window("Claude Codex Timer", id: "main") {
             ContentView(model: model)
                 .frame(minWidth: 850, minHeight: 650)
                 .tint(Theme.accent)
@@ -23,10 +23,10 @@ struct ClaudeTimerApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandGroup(after: .appSettings) {
-                Button("Claude/Codex Timer Settings…") { model.selection = .settings; NSApp.activate(ignoringOtherApps: true); NSApp.windows.first(where: { $0.canBecomeMain })?.makeKeyAndOrderFront(nil) }.keyboardShortcut(",")
+                Button("Claude Codex Timer Settings…") { model.selection = .settings; NSApp.activate(ignoringOtherApps: true); NSApp.windows.first(where: { $0.canBecomeMain })?.makeKeyAndOrderFront(nil) }.keyboardShortcut(",")
             }
         }
-        MenuBarExtra("Claude/Codex Timer", systemImage: "timer") { TimerMenu(model: model) }
+        MenuBarExtra("Claude Codex Timer", systemImage: "timer") { TimerMenu(model: model) }
     }
 }
 
@@ -38,8 +38,8 @@ struct TimerMenu: View {
         if model.running { Text("Ping in progress…") }
         Divider()
         Button("Run now") { model.runNow() }.disabled(model.busy || model.running || !model.canRun)
-        Button("Open Claude/Codex Timer") { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true); model.refresh() }
+        Button("Open Claude Codex Timer") { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true); model.refresh() }
         Divider()
-        Button("Quit Claude/Codex Timer") { NSApp.terminate(nil) }.keyboardShortcut("q")
+        Button("Quit Claude Codex Timer") { NSApp.terminate(nil) }.keyboardShortcut("q")
     }
 }

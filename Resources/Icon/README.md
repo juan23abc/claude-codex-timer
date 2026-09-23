@@ -10,6 +10,10 @@ swift scripts/make-icon.swift .build/AppIcon.iconset
 iconutil -c icns .build/AppIcon.iconset -o Resources/AppIcon.icns
 ```
 
+## Rights and attribution
+
+The supplied artwork combines Claude and OpenAI brand symbols. The project's MIT license does not grant rights to third-party trademarks or relicense third-party artwork. Before public distribution, confirm that the included source logo and generated icon may be distributed under the applicable brand terms, or replace them with original artwork. Claude Codex Timer is an independent project and is not endorsed by either provider.
+
 ## Image generation prompt
 
 Use case: precise-object-edit

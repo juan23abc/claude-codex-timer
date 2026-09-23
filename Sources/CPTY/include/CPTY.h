@@ -1,5 +1,5 @@
-#ifndef CLAUDE_TIMER_PTY_H
-#define CLAUDE_TIMER_PTY_H
+#ifndef CLAUDE_CODEX_TIMER_PTY_H
+#define CLAUDE_CODEX_TIMER_PTY_H
 #include <sys/types.h>
 pid_t ct_spawn_pty(const char *executable, char *const argv[], char *const envp[], const char *directory, int *master);
 pid_t ct_spawn_pipe(const char *executable, char *const argv[], char *const envp[], const char *directory, int *reader);

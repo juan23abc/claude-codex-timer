@@ -30,6 +30,7 @@ public enum LocalProcess {
 }
 
 public struct Scheduler {
+    // Keep the registered job identity stable so upgrades cannot create a second schedule.
     public static let label = "io.claude-timer.daily"
     public static let legacyLabel = "com.juan.claude-morning-timer"
     public let paths: AppPaths
@@ -65,7 +66,7 @@ public struct Scheduler {
     public func installRunner(from source: URL) throws {
         try paths.prepare()
         guard source.standardizedFileURL != paths.runner.standardizedFileURL else { return }
-        guard FileManager.default.isExecutableFile(atPath: source.path) else { throw TimerError("The bundled runner is missing. Rebuild or reinstall Claude/Codex Timer.") }
+        guard FileManager.default.isExecutableFile(atPath: source.path) else { throw TimerError("The bundled runner is missing. Rebuild or reinstall Claude Codex Timer.") }
         // Atomic replacement permits updating a binary while a previous run finishes.
         try Data(contentsOf: source).write(to: paths.runner, options: [.atomic])
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: paths.runner.path)

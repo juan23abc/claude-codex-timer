@@ -2,17 +2,17 @@
 import PackageDescription
 
 let package = Package(
-    name: "ClaudeTimer",
+    name: "ClaudeCodexTimer",
     platforms: [.macOS(.v13)],
     products: [
-        .executable(name: "ClaudeTimer", targets: ["ClaudeTimer"]),
-        .executable(name: "claude-timer-runner", targets: ["ClaudeTimerRunner"])
+        .executable(name: "ClaudeCodexTimer", targets: ["ClaudeCodexTimer"]),
+        .executable(name: "claude-codex-timer-runner", targets: ["ClaudeCodexTimerRunner"])
     ],
     targets: [
         .target(name: "CPTY"),
-        .target(name: "ClaudeTimerCore", dependencies: ["CPTY"]),
-        .executableTarget(name: "ClaudeTimer", dependencies: ["ClaudeTimerCore"]),
-        .executableTarget(name: "ClaudeTimerRunner", dependencies: ["ClaudeTimerCore"]),
-        .testTarget(name: "ClaudeTimerCoreTests", dependencies: ["ClaudeTimerCore"])
+        .target(name: "ClaudeCodexTimerCore", dependencies: ["CPTY"]),
+        .executableTarget(name: "ClaudeCodexTimer", dependencies: ["ClaudeCodexTimerCore"]),
+        .executableTarget(name: "ClaudeCodexTimerRunner", dependencies: ["ClaudeCodexTimerCore"]),
+        .testTarget(name: "ClaudeCodexTimerCoreTests", dependencies: ["ClaudeCodexTimerCore"])
     ]
 )

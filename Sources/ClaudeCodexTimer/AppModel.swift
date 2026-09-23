@@ -1,9 +1,17 @@
 import AppKit
 import SwiftUI
-import ClaudeTimerCore
+import ClaudeCodexTimerCore
 
 @MainActor
 final class AppModel: ObservableObject {
+    // Debug-only fixtures for screenshots; no account data or live actions are used.
+    private var isScreenshotPreview: Bool {
+        #if DEBUG
+        CommandLine.arguments.contains("--screenshots")
+        #else
+        false
+        #endif
+    }
     let paths = AppPaths()
     @Published var settings = TimerSettings()
     @Published private var savedSettings = TimerSettings()
@@ -20,12 +28,15 @@ final class AppModel: ObservableObject {
         var id: String { rawValue }
         var symbol: String { switch self { case .overview: return "timer"; case .activity: return "clock.arrow.circlepath"; case .settings: return "slider.horizontal.3" } }
     }
-    var runner: URL { Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/claude-timer-runner") }
+    var runner: URL { Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/claude-codex-timer-runner") }
     var claudePath: String? { ClaudeCommand.resolve(settings.claudePath, paths: paths) }
     var savedProviders: [TimerProvider] { savedSettings.providers }
     var providerSummary: String { savedProviders.map(\.title).joined(separator: " + ") }
-    var canRun: Bool { savedProviders.contains { $0.resolve(settings: savedSettings, paths: paths) != nil } }
-    func path(for provider: TimerProvider) -> String? { provider.resolve(settings: settings, paths: paths) }
+    var canRun: Bool { isScreenshotPreview || savedProviders.contains { $0.resolve(settings: savedSettings, paths: paths) != nil } }
+    func path(for provider: TimerProvider) -> String? {
+        if isScreenshotPreview { return "/opt/homebrew/bin/\(provider.rawValue)" }
+        return provider.resolve(settings: settings, paths: paths)
+    }
     enum ProviderChoice: String, CaseIterable, Identifiable {
         case claude = "Claude", codex = "Codex", both = "Both"
         var id: String { rawValue }
@@ -46,10 +57,24 @@ final class AppModel: ObservableObject {
     }
     var scheduledDate: Date { Calendar.current.date(bySettingHour: savedSettings.hour, minute: savedSettings.minute, second: 0, of: Date()) ?? Date() }
     init() {
+        #if DEBUG
+        if isScreenshotPreview {
+            enabled = true
+            let today = Calendar.current.startOfDay(for: Date())
+            for day in 0..<3 {
+                for provider in TimerProvider.allCases {
+                    let start = Calendar.current.date(byAdding: .day, value: -day, to: today)!.addingTimeInterval(7 * 3600)
+                    history.append(RunRecord(startedAt: start, finishedAt: start.addingTimeInterval(provider == .claude ? 3 : 2), outcome: .success, detail: "Replied with pong.", source: "scheduled", provider: provider))
+                }
+            }
+            return
+        }
+        #endif
         do { settings = try TimerSettings.load(paths: paths); savedSettings = settings } catch { self.error = "Could not load settings: \(error.localizedDescription)" }
         refresh()
     }
     func refresh() {
+        guard !isScreenshotPreview else { return }
         running = RunLock.isRunning(paths: paths)
         do { history = try RunHistory.load(paths: paths) } catch { self.error = "Could not read run history: \(error.localizedDescription)" }
         if let persisted = try? TimerSettings.load(paths: paths) { savedSettings = persisted }
@@ -61,6 +86,7 @@ final class AppModel: ObservableObject {
         }
     }
     func changeSchedule(enabled: Bool) {
+        guard !isScreenshotPreview else { return }
         guard !busy else { return }
         busy = true; error = nil; notice = nil
         let settings = settings, paths = paths, runner = runner
@@ -79,11 +105,13 @@ final class AppModel: ObservableObject {
         }
     }
     func saveSettings() {
+        guard !isScreenshotPreview else { return }
         if scheduled { changeSchedule(enabled: true); return }
         do { try settings.save(paths: paths); savedSettings = settings; error = nil; notice = "Settings saved." }
         catch { self.error = error.localizedDescription }
     }
     func runNow(provider: TimerProvider? = nil) {
+        guard !isScreenshotPreview else { return }
         guard !busy, !running else { return }
         busy = true; running = true; error = nil; notice = nil
         let runner = runner
@@ -101,6 +129,7 @@ final class AppModel: ObservableObject {
         }
     }
     func chooseExecutable(for provider: TimerProvider) {
+        guard !isScreenshotPreview else { return }
         let panel = NSOpenPanel()
         panel.title = "Choose the \(provider.cliTitle) executable"
         panel.message = "Select the \(provider.rawValue) executable from your installation."
@@ -114,10 +143,11 @@ final class AppModel: ObservableObject {
         }
     }
     func openSetup(provider: TimerProvider = .claude) {
+        guard !isScreenshotPreview else { return }
         guard let executable = path(for: provider) else { error = "Install \(provider.cliTitle) first, then choose its executable in Settings."; return }
         do {
             try paths.prepare()
-            let script = paths.root.appendingPathComponent("\(provider.title) Timer Setup.command")
+            let script = paths.root.appendingPathComponent("Claude Codex Timer - \(provider.title) Setup.command")
             let contents = provider == .claude ? ClaudeCommand.setupScript(executable: executable, paths: paths) : CodexCommand.setupScript(executable: executable, paths: paths)
             try contents.write(to: script, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
@@ -128,6 +158,7 @@ final class AppModel: ObservableObject {
         } catch { self.error = error.localizedDescription }
     }
     func revealData() {
+        guard !isScreenshotPreview else { return }
         do { try paths.prepare(); NSWorkspace.shared.open(paths.root) }
         catch { self.error = error.localizedDescription }
     }

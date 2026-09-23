@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeTimerCore
+@testable import ClaudeCodexTimerCore
 
 final class CodexTests: XCTestCase {
     private var paths: AppPaths!

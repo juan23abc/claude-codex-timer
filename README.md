@@ -1,10 +1,60 @@
-# Claude/Codex Timer
+<p align="center">
+  <img src="Resources/Icon/AppIcon.png" alt="Claude Codex Timer app icon" width="112">
+</p>
 
-A native macOS app that sends one small message to **Claude, Codex, or both** at a time you choose each day.
+<h1 align="center">Claude Codex Timer</h1>
 
-Choose your providers, set a daily time, and check results in **Activity**. Each provider has its own sign-in, executable, test action, and result. A failed Claude ping does not prevent Codex from running, or vice versa. The daily schedule works when the app is closed.
+<p align="center">A daily head start for Claude and Codex.<br>One small ping, at the time you choose. Built for Mac.</p>
 
-This project is being prepared for an open-source release. **No license has been selected and no public release has been authorized yet.** It is independent of Anthropic and OpenAI.
+<p align="center">
+  <a href="https://github.com/juan23abc/claude-codex-timer/releases/latest/download/ClaudeCodexTimer.dmg"><img alt="Download for Mac — DMG" src="https://img.shields.io/badge/Download_for_Mac-DMG-C26040?style=for-the-badge&logo=apple&logoColor=white"></a>
+</p>
+
+<p align="center">macOS 13+ · Apple silicon &amp; Intel · Free &amp; MIT licensed</p>
+
+![Claude Codex Timer overview showing the daily schedule and separate Claude and Codex results](docs/screenshots/overview.png)
+
+Choose **Claude, Codex, or both**, set a daily time, and let your Mac handle the routine. The schedule works even when the app is closed, and each provider gets its own result in **Activity**.
+
+- **Your schedule.** Set a local daily time, pause it, or run a ping on demand.
+- **Your accounts.** Use your existing CLI sign-ins, with separate setup and tests for each provider.
+- **Clear results.** See verified replies, setup issues, timeouts, and usage-limit failures.
+- **Native and local.** SwiftUI window, menu bar controls, local history, and no analytics.
+
+If it makes your mornings easier, [star the repository](https://github.com/juan23abc/claude-codex-timer) to support the project.
+
+## Download and install
+
+**[Download ClaudeCodexTimer.dmg](https://github.com/juan23abc/claude-codex-timer/releases/latest/download/ClaudeCodexTimer.dmg)** · [Release notes and checksums](https://github.com/juan23abc/claude-codex-timer/releases/latest)
+
+1. Open the DMG and drag **Claude Codex Timer** into **Applications**.
+2. Eject the disk image, then open the app from Applications.
+3. In **Settings**, choose your providers, complete their CLI setup, and try **Test ping**.
+4. Choose a daily time and enable the schedule.
+
+**First launch:** this initial build is ad-hoc signed and is **not notarized by Apple**. If macOS blocks it and you trust this download, first try opening it, then use **System Settings → Privacy & Security → Open Anyway**. See [Apple’s instructions](https://support.apple.com/en-us/102445). You do not need to disable Gatekeeper.
+
+**You still need [Claude Code](https://code.claude.com/docs/en/setup) and/or [Codex CLI](https://developers.openai.com/codex/cli) installed and signed in.** The DMG includes the timer and its helper, not either provider CLI. Pings use your account’s usage allowance.
+
+## Screenshots
+
+<details>
+<summary><strong>Settings — choose your providers and daily time</strong></summary>
+
+![Settings with a daily time, provider selection, and separate Claude and Codex connections](docs/screenshots/settings.png)
+
+</details>
+
+<details>
+<summary><strong>Activity — a separate result for every provider</strong></summary>
+
+![Activity showing individual Claude and Codex ping results](docs/screenshots/activity.png)
+
+</details>
+
+Screenshots show the native app with sample activity and example executable paths.
+
+An independent project maintained by [juan23abc](https://github.com/juan23abc). Not affiliated with or endorsed by Anthropic or OpenAI.
 
 ## What it does
 
@@ -31,7 +81,7 @@ The original motivation was to start a usage window early in the day. **The app 
 open "dist/Claude Codex Timer.app"
 ```
 
-The app displays **Claude/Codex Timer**. Its file is named `Claude Codex Timer.app` because `/` separates filesystem paths. Drag it to Applications to keep it there. Local builds are ad-hoc signed, not notarized for public distribution.
+The app and bundle use **Claude Codex Timer**; the Swift package and app executable use `ClaudeCodexTimer`. Drag `Claude Codex Timer.app` to Applications to keep it there. Local builds are ad-hoc signed, not notarized for public distribution.
 
 1. In **Settings**, choose **Claude**, **Codex**, or **Both** under **Send pings to**.
 2. Check the selected CLIs are found; **Choose…** supports custom installation paths.
@@ -46,19 +96,19 @@ Upgrading preserves settings and history. Old history entries are labeled Claude
 ```bash
 ./install.sh                 # build, install to ~/Applications, enable saved time
 ./install.sh 07:30           # same, selecting a time
-./send-hi.sh --test          # ping all saved providers
-./send-hi.sh --provider codex # test only Codex
+./ping.sh                   # ping all saved providers
+./ping.sh --provider codex   # test only Codex
 ./uninstall.sh               # disable schedules; keep app, settings, and history
 ```
 
-The helper supports:
+`send-hi.sh` remains an alias for older integrations. The helper supports:
 
 ```bash
-"dist/Claude Codex Timer.app/Contents/Helpers/claude-timer-runner" providers claude codex
-"dist/Claude Codex Timer.app/Contents/Helpers/claude-timer-runner" run --provider codex
-"dist/Claude Codex Timer.app/Contents/Helpers/claude-timer-runner" status
-"dist/Claude Codex Timer.app/Contents/Helpers/claude-timer-runner" enable 07:00
-"dist/Claude Codex Timer.app/Contents/Helpers/claude-timer-runner" disable
+"dist/Claude Codex Timer.app/Contents/Helpers/claude-codex-timer-runner" providers claude codex
+"dist/Claude Codex Timer.app/Contents/Helpers/claude-codex-timer-runner" run --provider codex
+"dist/Claude Codex Timer.app/Contents/Helpers/claude-codex-timer-runner" status
+"dist/Claude Codex Timer.app/Contents/Helpers/claude-codex-timer-runner" enable 07:00
+"dist/Claude Codex Timer.app/Contents/Helpers/claude-codex-timer-runner" disable
 ```
 
 `run` prints a JSON array of provider results and exits nonzero if any selected provider fails. A single-provider test does not change the saved selection.
@@ -76,7 +126,7 @@ A per-user macOS LaunchAgent runs the compiled helper, without `sudo`. The helpe
 
 ## Privacy and local files
 
-Claude/Codex Timer has no analytics, direct network requests, or credential storage. Each CLI handles authentication and sends its prompt to its provider. A saved API-key CLI login can still incur API charges; excluding shell API-key variables does not change your saved login type.
+Claude Codex Timer has no analytics, direct network requests, or credential storage. Each CLI handles authentication and sends its prompt to its provider. A saved API-key CLI login can still incur API charges; excluding shell API-key variables does not change your saved login type.
 
 Claude uses safe mode with built-in tools disabled, MCP tools denied, and hooks disabled through session settings. The app never edits `~/.claude.json` or answers trust prompts.
 
@@ -98,6 +148,7 @@ Use **Show local data in Finder** to inspect app data. Redact account or usage d
 swift test
 ./scripts/build-app.sh
 ./scripts/build-app.sh --universal  # Apple silicon + Intel
+./scripts/build-dmg.sh --layout    # universal DMG with a Finder install window
 ```
 
 Tests use isolated temporary homes and fake CLI processes. They do not contact providers, change your real schedule, or read credentials. See [CONTRIBUTING.md](CONTRIBUTING.md), [review notes](docs/REVIEW.md), and [release preparation](docs/RELEASE.md).
@@ -106,4 +157,10 @@ Claude’s interactive transcript format is an implementation detail that can ch
 
 ## Release status
 
-**Private development repository.** Public release is not authorized. License selection, final maintainer metadata, Developer ID signing/notarization, and explicit permission to make the project public remain outstanding. No build or CI script publishes releases.
+The first DMG is being prepared for release; the download links above become available when it is published. See the [release checklist](docs/RELEASE.md) for remaining checks. Prebuilt apps are not yet Developer ID signed or notarized. No build or CI script publishes releases.
+
+## License
+
+[MIT License](LICENSE) · Copyright (c) 2026 juan23abc.
+
+The license permits commercial use, modification, and redistribution, including closed-source derivatives, provided its copyright and license notice are preserved. The software is provided without warranty. Third-party names and logos belong to their respective owners; the software license does not grant rights to their trademarks. See the [artwork notes](Resources/Icon/README.md).

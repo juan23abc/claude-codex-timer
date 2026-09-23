@@ -1,5 +1,5 @@
 import SwiftUI
-import ClaudeTimerCore
+import ClaudeCodexTimerCore
 
 enum Theme {
     static let accent = Color(red: 0.76, green: 0.37, blue: 0.25)
@@ -19,7 +19,7 @@ struct ContentView: View {
                         .frame(width: 40, height: 40)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Claude/Codex Timer").font(.headline).fixedSize(horizontal: false, vertical: true)
+                        Text("Claude Codex Timer").font(.headline).fixedSize(horizontal: false, vertical: true)
                         Text("A daily head start").font(.caption).foregroundStyle(.secondary)
                     }
                 }.padding(.horizontal, 15).padding(.top, 24)
@@ -156,11 +156,11 @@ struct ContentView: View {
             GroupBox {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("The daily schedule keeps working when this app is closed. Turning it off removes the background schedule; your settings and history stay on this Mac.")
-                    Text("Claude/Codex Timer has no analytics and stores no credentials. Each CLI handles its own sign-in and sends its ping to Anthropic or OpenAI.")
+                    Text("Claude Codex Timer has no analytics and stores no credentials. Each CLI handles its own sign-in and sends its ping to Anthropic or OpenAI.")
                     Button("Show local data in Finder") { model.revealData() }
                 }.font(.caption).foregroundStyle(.secondary).padding(12)
             } label: { Label("On this Mac", systemImage: "desktopcomputer") }
-            Text("Claude/Codex Timer 1.1.0 · An independent project").font(.caption).foregroundStyle(.tertiary)
+            Text("Claude Codex Timer 1.1.0 · An independent project").font(.caption).foregroundStyle(.tertiary)
         }
     }
     private func connection(_ provider: TimerProvider) -> some View {
