@@ -19,10 +19,13 @@ for BINARY in "$APP_DIR/Contents/MacOS/ClaudeCodexTimer" "$APP_DIR/Contents/Help
   lipo "$BINARY" -verify_arch arm64 x86_64
 done
 WORK_DIR="$(mktemp -d "$PROJECT_DIR/dist/.dmg-build.XXXXXX")"
-MOUNT_DIR="$WORK_DIR/mount"
+# Finder stores the mount path in its background bookmark. Use a neutral path,
+# so the distributed .DS_Store never contains the maintainer's home directory.
+MOUNT_DIR="$(mktemp -d /tmp/claude-codex-timer-dmg.XXXXXX)"
 cleanup() {
   if mount | grep -Fq " on $MOUNT_DIR "; then hdiutil detach "$MOUNT_DIR" -quiet || true; fi
   rm -rf "$WORK_DIR"
+  rmdir "$MOUNT_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
 mkdir -p "$WORK_DIR/content"
