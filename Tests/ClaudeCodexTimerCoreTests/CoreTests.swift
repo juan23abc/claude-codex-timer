@@ -34,11 +34,60 @@ final class CoreTests: XCTestCase {
         try Data("broken".utf8).write(to: paths.config)
         XCTAssertThrowsError(try TimerSettings.load(paths: paths))
     }
+    func testMultipleTimesRoundTripAndInvalidTimesPreserveSavedSettings() throws {
+        let settings = TimerSettings(times: [DailyTime(hour: 7), DailyTime(hour: 9), DailyTime(hour: 12), DailyTime(hour: 17), DailyTime(hour: 23, minute: 59)])
+        try settings.save(paths: paths)
+        XCTAssertEqual(try TimerSettings.load(paths: paths), settings)
+        for times in [[], [DailyTime(hour: 7), DailyTime(hour: 7)],
+                      [DailyTime(hour: 0), DailyTime(hour: 7), DailyTime(hour: 9), DailyTime(hour: 12), DailyTime(hour: 17), DailyTime(hour: 21)],
+                      [DailyTime(hour: -1)], [DailyTime(hour: 24)],
+                      [DailyTime(hour: 7, minute: -1)], [DailyTime(hour: 7, minute: 60)]] {
+            XCTAssertThrowsError(try TimerSettings(times: times).save(paths: paths))
+            XCTAssertEqual(try TimerSettings.load(paths: paths), settings)
+        }
+    }
+    func testSingleTimeSettingsMigrateWithoutLosingProvidersOrPaths() throws {
+        let legacy: [String: Any] = ["hour": 17, "minute": 45, "claudePath": "/custom/claude", "codexPath": "/custom/codex", "providers": ["codex"]]
+        try JSONSerialization.data(withJSONObject: legacy).write(to: paths.config)
+        let settings = try TimerSettings.load(paths: paths)
+        XCTAssertEqual(settings, TimerSettings(times: [DailyTime(hour: 17, minute: 45)], claudePath: "/custom/claude", codexPath: "/custom/codex", providers: [.codex]))
+        try settings.save(paths: paths)
+        XCTAssertEqual(try TimerSettings.load(paths: paths), settings)
+    }
+    func testEachTimerKeepsItsOwnProvidersAndManualRunsUseTheirUnion() throws {
+        var settings = TimerSettings(timers: [DailyTimer(time: DailyTime(hour: 7), providers: [.claude]), DailyTimer(time: DailyTime(hour: 17), providers: [.codex])])
+        try settings.save(paths: paths)
+        XCTAssertEqual(try TimerSettings.load(paths: paths), settings)
+        XCTAssertEqual(settings.providers, [.claude, .codex])
+        settings.timers[0].time = DailyTime(hour: 8)
+        settings.timers[1].providers = [.claude, .codex]
+        try settings.save(paths: paths)
+        XCTAssertEqual(try TimerSettings.load(paths: paths).timers[0].providers, [.claude])
+        XCTAssertEqual(try TimerSettings.load(paths: paths).timers[1].providers, [.claude, .codex])
+        for providers: [TimerProvider] in [[], [.codex, .codex]] {
+            settings.timers[1].providers = providers
+            XCTAssertThrowsError(try settings.save(paths: paths))
+        }
+        settings.timers[1] = DailyTimer(time: settings.timers[0].time, providers: [.codex])
+        XCTAssertThrowsError(try settings.validate(), "Different providers must not allow duplicate times")
+    }
+    func testMultipleLegacyTimesInheritTheirSharedProviders() throws {
+        let data = try JSONSerialization.data(withJSONObject: ["times": [["hour": 7, "minute": 0], ["hour": 17, "minute": 0]], "providers": ["codex"], "claudePath": ""])
+        try data.write(to: paths.config)
+        let settings = try TimerSettings.load(paths: paths)
+        XCTAssertEqual(settings.timers.map(\.providers), [[.codex], [.codex]])
+    }
+    func testInvalidNewTimesDoNotFallBackToLegacyTime() throws {
+        for times: Any in [[], NSNull(), [["hour": 7, "minute": 0], ["hour": 7, "minute": 0]]] {
+            let data = try JSONSerialization.data(withJSONObject: ["times": times, "hour": 7, "minute": 0, "claudePath": ""])
+            try data.write(to: paths.config)
+            XCTAssertThrowsError(try TimerSettings.load(paths: paths))
+        }
+    }
     func testLegacyTimeImportedWithoutEnablingAnything() throws {
         let data = try PropertyListSerialization.data(fromPropertyList: ["StartCalendarInterval": ["Hour": 8, "Minute": 30]], format: .xml, options: 0)
         try data.write(to: paths.legacyAgent)
-        XCTAssertEqual(try TimerSettings.load(paths: paths).hour, 8)
-        XCTAssertEqual(try TimerSettings.load(paths: paths).minute, 30)
+        XCTAssertEqual(try TimerSettings.load(paths: paths).times, [DailyTime(hour: 8, minute: 30)])
         XCTAssertFalse(FileManager.default.fileExists(atPath: paths.agent.path))
     }
     func testNextRunTodayTomorrowAndDST() throws {
@@ -56,10 +105,45 @@ final class CoreTests: XCTestCase {
     func testScheduleUsesCurrentHomeAndDoesNotPingOnLoad() throws {
         let data = try Scheduler(paths: paths).plist(settings: TimerSettings(hour: 9, minute: 17))
         let plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
-        XCTAssertEqual(plist["ProgramArguments"] as? [String], [paths.runner.path, "run", "--scheduled"])
+        XCTAssertEqual(plist["ProgramArguments"] as? [String], [paths.runner.path, "run", "--scheduled", "--provider", "claude", "--provider", "codex"])
         XCTAssertEqual(plist["StartCalendarInterval"] as? [String: Int], ["Hour": 9, "Minute": 17])
         XCTAssertNil(plist["RunAtLoad"])
         XCTAssertNil(plist["KeepAlive"])
+    }
+    func testNextRunChoosesEarliestOfAllTimesAndWrapsAtMidnight() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let settings = TimerSettings(times: [DailyTime(hour: 17), DailyTime(hour: 0), DailyTime(hour: 7)])
+        let start = calendar.date(from: DateComponents(year: 2026, month: 9, day: 24))!
+        for (after, expected) in [(6, 7), (7, 17), (12, 17), (17, 24), (23, 24), (24, 31)] {
+            XCTAssertEqual(settings.nextRun(after: start.addingTimeInterval(Double(after) * 3600), calendar: calendar), start.addingTimeInterval(Double(expected) * 3600))
+        }
+    }
+    func testMultipleTimesFollowDaylightSavingChanges() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        let settings = TimerSettings(times: [DailyTime(hour: 17), DailyTime(hour: 7)])
+        for (month, day, overnightHours) in [(3, 7, 13), (10, 31, 15)] {
+            let evening = calendar.date(from: DateComponents(year: 2026, month: month, day: day, hour: 17))!
+            let morning = try XCTUnwrap(settings.nextRun(after: evening, calendar: calendar))
+            XCTAssertEqual(calendar.component(.hour, from: morning), 7)
+            XCTAssertEqual(morning.timeIntervalSince(evening), Double(overnightHours) * 3600)
+            let next = try XCTUnwrap(settings.nextRun(after: morning, calendar: calendar))
+            XCTAssertEqual(calendar.component(.hour, from: next), 17)
+            XCTAssertEqual(next.timeIntervalSince(morning), 10 * 3600)
+        }
+    }
+    func testScheduleRegistersFiveTimersWithTheirOwnProviders() throws {
+        let timers = [DailyTimer(time: DailyTime(hour: 7), providers: [.claude]), DailyTimer(time: DailyTime(hour: 17), providers: [.codex]), DailyTimer(time: DailyTime(hour: 12)), DailyTimer(time: DailyTime(hour: 21), providers: [.claude]), DailyTimer(time: DailyTime(hour: 9), providers: [.codex])]
+        let settings = TimerSettings(timers: timers)
+        for (index, timer) in timers.enumerated() {
+            let data = try Scheduler(paths: paths).plist(settings: settings, timerIndex: index)
+            let plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
+            XCTAssertEqual(plist["Label"] as? String, Scheduler.labels[index])
+            XCTAssertEqual(plist["StartCalendarInterval"] as? [String: Int], ["Hour": timer.time.hour, "Minute": timer.time.minute])
+            XCTAssertEqual(plist["ProgramArguments"] as? [String], [paths.runner.path, "run", "--scheduled"] + timer.providers.flatMap { ["--provider", $0.rawValue] })
+            XCTAssertNil(plist["RunAtLoad"])
+        }
     }
     func testProcessLockBlocksOverlappingRunsAndReleases() throws {
         var lock: RunLock? = try RunLock(paths: paths)
@@ -69,6 +153,32 @@ final class CoreTests: XCTestCase {
         lock = nil
         XCTAssertFalse(RunLock.isRunning(paths: paths))
         XCTAssertNoThrow(try RunLock(paths: paths))
+    }
+    func testQueuedScheduledRunWaitsForExistingRunAndKeepsItsProviders() throws {
+        try TimerSettings(claudePath: "/missing/claude", codexPath: "/missing/codex").save(paths: paths)
+        let acquired = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        let holderFinished = expectation(description: "Existing run releases lock")
+        let paths = paths!
+        DispatchQueue.global().async {
+            do {
+                let lock = try RunLock(paths: paths)
+                acquired.signal()
+                _ = release.wait(timeout: .now() + 5)
+                withExtendedLifetime(lock) {}
+            } catch { XCTFail(error.localizedDescription); acquired.signal() }
+            holderFinished.fulfill()
+        }
+        XCTAssertEqual(acquired.wait(timeout: .now() + 2), .success)
+        XCTAssertThrowsError(try RunLock(paths: paths, waitTimeout: 0.1))
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { release.signal() }
+        let started = ProcessInfo.processInfo.systemUptime
+        let records = try PingRunner.runSelected(paths: paths, source: "scheduled", timeout: 1, providers: [.codex], waitForTurn: true)
+        XCTAssertGreaterThanOrEqual(ProcessInfo.processInfo.systemUptime - started, 0.15)
+        XCTAssertEqual(records.map(\.provider), [.codex])
+        XCTAssertEqual(records.map(\.source), ["scheduled"])
+        wait(for: [holderFinished], timeout: 2)
+        XCTAssertFalse(RunLock.isRunning(paths: paths))
     }
     func testHistoryIsBoundedAndPreservesOutcome() throws {
         for i in 0..<105 {
@@ -148,16 +258,49 @@ final class CoreTests: XCTestCase {
     }
     func testFailedReplacementRestoresWorkingScheduleAndSettings() throws {
         try installScript("exit 0\n")
-        let original = try TimerSettings.load(paths: paths)
-        let launchd = FakeLaunchd(loaded: [Scheduler.label])
+        var original = try TimerSettings.load(paths: paths)
+        original.times = [DailyTime(hour: 7), DailyTime(hour: 9), DailyTime(hour: 12), DailyTime(hour: 17), DailyTime(hour: 21)]
+        try original.save(paths: paths)
+        let launchd = FakeLaunchd(loaded: [])
         let scheduler = Scheduler(paths: paths, control: launchd.run)
-        let plist = try scheduler.plist(settings: original)
-        try plist.write(to: paths.agent)
-        launchd.failNextBootstrap = true
-        XCTAssertThrowsError(try scheduler.enable(settings: TimerSettings(hour: 9, claudePath: original.claudePath, providers: [.claude]), runner: URL(fileURLWithPath: original.claudePath)))
+        let runner = URL(fileURLWithPath: original.claudePath)
+        try scheduler.enable(settings: original, runner: runner)
+        let previous = try Scheduler.labels.map { try Data(contentsOf: paths.agent(label: $0)) }
+        var replacement = original
+        replacement.timers[0].time = DailyTime(hour: 8)
+        launchd.failBootstrapNumber = launchd.bootstrapCount + 3
+        XCTAssertThrowsError(try scheduler.enable(settings: replacement, runner: runner))
         XCTAssertTrue(scheduler.isEnabled)
-        XCTAssertEqual(try Data(contentsOf: paths.agent), plist)
+        XCTAssertEqual(launchd.loaded, Set(Scheduler.labels))
+        XCTAssertEqual(try Scheduler.labels.map { try Data(contentsOf: paths.agent(label: $0)) }, previous)
         XCTAssertEqual(try TimerSettings.load(paths: paths), original)
+    }
+    func testScheduleUpdateRemovesOldTimesAndRejectsDuplicatesBeforeChangingJob() throws {
+        try installScript("exit 0\n")
+        var settings = try TimerSettings.load(paths: paths)
+        let launchd = FakeLaunchd(loaded: [])
+        let scheduler = Scheduler(paths: paths, control: launchd.run)
+        let runner = URL(fileURLWithPath: settings.claudePath)
+        settings.times = [DailyTime(hour: 7), DailyTime(hour: 12), DailyTime(hour: 17)]
+        try scheduler.enable(settings: settings, runner: runner)
+        settings.times.remove(at: 1)
+        try scheduler.enable(settings: settings, runner: runner)
+        let data = try Data(contentsOf: paths.agent)
+        let plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
+        XCTAssertEqual(plist["StartCalendarInterval"] as? [String: Int], ["Hour": 7, "Minute": 0])
+        let second = try XCTUnwrap(PropertyListSerialization.propertyList(from: Data(contentsOf: paths.agent(label: Scheduler.labels[1])), format: nil) as? [String: Any])
+        XCTAssertEqual(second["StartCalendarInterval"] as? [String: Int], ["Hour": 17, "Minute": 0])
+        XCTAssertEqual(launchd.loaded, Set(Scheduler.labels.prefix(2)))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.agent(label: Scheduler.labels[2]).path))
+        var invalid = settings
+        invalid.times.append(settings.times[0])
+        XCTAssertThrowsError(try scheduler.enable(settings: invalid, runner: runner))
+        XCTAssertEqual(try Data(contentsOf: paths.agent), data)
+        XCTAssertEqual(try TimerSettings.load(paths: paths), settings)
+        XCTAssertTrue(scheduler.isEnabled)
+        try scheduler.disable()
+        XCTAssertTrue(launchd.loaded.isEmpty)
+        XCTAssertFalse(Scheduler.labels.contains { FileManager.default.fileExists(atPath: paths.agent(label: $0).path) })
     }
     func testRenamedBundledRunnerPreservesExistingInstallation() throws {
         let oldRoot = paths.home.appendingPathComponent("Library/Application Support/ClaudeTimer")
@@ -188,7 +331,7 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(try TimerSettings.load(paths: paths), settings)
         XCTAssertEqual(try Data(contentsOf: paths.history), history)
         let plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: Data(contentsOf: oldAgent), format: nil) as? [String: Any])
-        XCTAssertEqual(plist["ProgramArguments"] as? [String], [oldRunner.path, "run", "--scheduled"])
+        XCTAssertEqual(plist["ProgramArguments"] as? [String], [oldRunner.path, "run", "--scheduled", "--provider", "claude"])
     }
     func testFailedMigrationLeavesOriginalJobLoaded() throws {
         try installScript("exit 0\n")
@@ -226,14 +369,18 @@ final class CoreTests: XCTestCase {
 private final class FakeLaunchd {
     var loaded: Set<String>
     var failNextBootstrap = false
+    var failBootstrapNumber: Int?
+    var bootstrapCount = 0
     init(loaded: Set<String>) { self.loaded = loaded }
     func run(_ arguments: [String]) throws -> CommandResult {
-        let target = arguments.last!.contains(Scheduler.legacyLabel) ? Scheduler.legacyLabel : Scheduler.label
+        let url = URL(fileURLWithPath: arguments.last!)
+        let target = arguments.first == "bootstrap" ? url.deletingPathExtension().lastPathComponent : url.lastPathComponent
         switch arguments.first {
         case "print": return CommandResult(status: loaded.contains(target) ? 0 : 113, output: "")
         case "bootout": loaded.remove(target)
         case "bootstrap":
-            if failNextBootstrap { failNextBootstrap = false; return CommandResult(status: 5, output: "Injected bootstrap failure") }
+            bootstrapCount += 1
+            if failNextBootstrap || bootstrapCount == failBootstrapNumber { failNextBootstrap = false; return CommandResult(status: 5, output: "Injected bootstrap failure") }
             loaded.insert(target)
         default: throw TimerError("Unexpected launchctl command")
         }

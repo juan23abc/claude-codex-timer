@@ -30,8 +30,9 @@ public enum LocalProcess {
 }
 
 public struct Scheduler {
-    // Keep the registered job identity stable so upgrades cannot create a second schedule.
+    // The first timer retains the original job identity for in-place upgrades.
     public static let label = "io.claude-timer.daily"
+    public static let labels = [label] + (2...TimerSettings.maximumTimes).map { "\(label).\($0)" }
     public static let legacyLabel = "com.juan.claude-morning-timer"
     public let paths: AppPaths
     private let control: ([String]) throws -> CommandResult
@@ -43,19 +44,21 @@ public struct Scheduler {
         self.paths = paths; self.control = control
     }
     private var domain: String { "gui/\(getuid())" }
-    public var isEnabled: Bool { isLoaded(Self.label) }
+    public var isEnabled: Bool { Self.labels.contains(where: isLoaded) }
     public var hasLegacySchedule: Bool { FileManager.default.fileExists(atPath: paths.legacyAgent.path) || isLoaded(Self.legacyLabel) }
     private func isLoaded(_ label: String) -> Bool {
         (try? control(["print", "\(domain)/\(label)"]).status) == 0
     }
-    public func plist(settings: TimerSettings) throws -> Data {
+    public func plist(settings: TimerSettings, timerIndex: Int = 0) throws -> Data {
         try settings.validate()
+        guard settings.timers.indices.contains(timerIndex) else { throw TimerError("Choose an existing timer.") }
+        let timer = settings.timers[timerIndex]
         let dictionary: [String: Any] = [
-            "Label": Self.label,
-            "ProgramArguments": [paths.runner.path, "run", "--scheduled"],
+            "Label": Self.labels[timerIndex],
+            "ProgramArguments": [paths.runner.path, "run", "--scheduled"] + timer.providers.flatMap { ["--provider", $0.rawValue] },
             "WorkingDirectory": paths.workspace.path,
             "EnvironmentVariables": ["HOME": paths.home.path, "PATH": "\(paths.home.path)/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"],
-            "StartCalendarInterval": ["Hour": settings.hour, "Minute": settings.minute],
+            "StartCalendarInterval": ["Hour": timer.time.hour, "Minute": timer.time.minute],
             "StandardOutPath": paths.log.path,
             "StandardErrorPath": paths.log.path,
             "ProcessType": "Background",
@@ -77,18 +80,27 @@ public struct Scheduler {
             guard provider.resolve(settings: settings, paths: paths) != nil else { throw TimerError("Choose or install \(provider.cliTitle), or deselect it before enabling the schedule.") }
         }
         let fm = FileManager.default
-        let previous = try? Data(contentsOf: paths.agent)
+        let previous = Dictionary(uniqueKeysWithValues: Self.labels.compactMap { label in
+            (try? Data(contentsOf: paths.agent(label: label))).map { (label, $0) }
+        })
         let previousConfig = try? Data(contentsOf: paths.config)
-        let wasEnabled = isEnabled
+        let loadedLabels = Self.labels.filter(isLoaded)
         let legacyWasEnabled = isLoaded(Self.legacyLabel)
         try installRunner(from: runner)
         do {
-            if wasEnabled { try bootout(Self.label) }
+            for label in loadedLabels { try bootout(label) }
             try settings.save(paths: paths)
-            try plist(settings: settings).write(to: paths.agent, options: [.atomic])
-            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: paths.agent.path)
-            let result = try control(["bootstrap", domain, paths.agent.path])
-            guard result.status == 0, isEnabled else { throw TimerError("macOS could not enable the schedule. \(result.output.trimmingCharacters(in: .whitespacesAndNewlines))") }
+            for (index, label) in Self.labels.enumerated() {
+                let agent = paths.agent(label: label)
+                if settings.timers.indices.contains(index) {
+                    try plist(settings: settings, timerIndex: index).write(to: agent, options: [.atomic])
+                    try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: agent.path)
+                    let result = try control(["bootstrap", domain, agent.path])
+                    guard result.status == 0, isLoaded(label) else { throw TimerError("macOS could not enable timer \(index + 1). \(result.output.trimmingCharacters(in: .whitespacesAndNewlines))") }
+                } else if fm.fileExists(atPath: agent.path) {
+                    try fm.removeItem(at: agent)
+                }
+            }
             // Migrate only after the replacement is registered. Preserve a backup.
             if hasLegacySchedule {
                 if fm.fileExists(atPath: paths.legacyAgent.path) {
@@ -98,19 +110,23 @@ public struct Scheduler {
                 if fm.fileExists(atPath: paths.legacyAgent.path) { try fm.removeItem(at: paths.legacyAgent) }
             }
         } catch {
-            if isEnabled { try? bootout(Self.label) }
-            if let previous { try? previous.write(to: paths.agent, options: [.atomic]) }
-            else { try? fm.removeItem(at: paths.agent) }
+            for label in Self.labels {
+                if isLoaded(label) { try? bootout(label) }
+                if let data = previous[label] { try? data.write(to: paths.agent(label: label), options: [.atomic]) }
+                else { try? fm.removeItem(at: paths.agent(label: label)) }
+            }
             if let previousConfig { try? previousConfig.write(to: paths.config, options: [.atomic]) }
             else { try? fm.removeItem(at: paths.config) }
-            if wasEnabled { _ = try? control(["bootstrap", domain, paths.agent.path]) }
+            for label in loadedLabels { _ = try? control(["bootstrap", domain, paths.agent(label: label).path]) }
             if legacyWasEnabled && !isLoaded(Self.legacyLabel) { _ = try? control(["bootstrap", domain, paths.legacyAgent.path]) }
             throw error
         }
     }
     public func disable() throws {
-        if isEnabled { try bootout(Self.label) }
-        if FileManager.default.fileExists(atPath: paths.agent.path) { try FileManager.default.removeItem(at: paths.agent) }
+        for label in Self.labels {
+            if isLoaded(label) { try bootout(label) }
+            if FileManager.default.fileExists(atPath: paths.agent(label: label).path) { try FileManager.default.removeItem(at: paths.agent(label: label)) }
+        }
         if hasLegacySchedule {
             if isLoaded(Self.legacyLabel) { try bootout(Self.legacyLabel) }
             if FileManager.default.fileExists(atPath: paths.legacyAgent.path) { try FileManager.default.removeItem(at: paths.legacyAgent) }

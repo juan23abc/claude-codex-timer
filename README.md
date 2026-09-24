@@ -14,9 +14,9 @@
 
 ![Claude Codex Timer overview showing the daily schedule and separate Claude and Codex results](docs/screenshots/overview.png)
 
-Choose **Claude, Codex, or both**, set a daily time, and let your Mac handle the routine. The schedule works even when the app is closed, and each provider gets its own result in **Activity**.
+Choose **Claude, Codex, or both**, set up to five daily times, and let your Mac handle the routine. The schedule works even when the app is closed, and each provider gets its own result in **Activity**.
 
-- **Your schedule.** Set a local daily time, pause it, or run a ping on demand.
+- **Your schedule.** Set one to five distinct local daily times, choose Claude, Codex, or both for each timer, pause the schedule, or run a ping on demand.
 - **Your accounts.** Use your existing CLI sign-ins, with separate setup and tests for each provider.
 - **Clear results.** See verified replies, setup issues, timeouts, and usage-limit failures.
 - **Native and local.** SwiftUI window, menu bar controls, local history, and no analytics.
@@ -30,7 +30,7 @@ If it makes your mornings easier, [star the repository](https://github.com/juan2
 1. Open the DMG and drag **Claude Codex Timer** into **Applications**.
 2. Eject the disk image, then open the app from Applications.
 3. In **Settings**, choose your providers, complete their CLI setup, and try **Test ping**.
-4. Choose a daily time and enable the schedule.
+4. Choose up to five daily times and enable the schedule.
 
 **First launch:** this initial build is ad-hoc signed and is **not notarized by Apple**. If macOS blocks it and you trust this download, first try opening it, then use **System Settings → Privacy & Security → Open Anyway**. See [Apple’s instructions](https://support.apple.com/en-us/102445). You do not need to disable Gatekeeper.
 
@@ -39,9 +39,9 @@ If it makes your mornings easier, [star the repository](https://github.com/juan2
 ## Screenshots
 
 <details>
-<summary><strong>Settings — choose your providers and daily time</strong></summary>
+<summary><strong>Settings — choose daily times and providers for each timer</strong></summary>
 
-![Settings with a daily time, provider selection, and separate Claude and Codex connections](docs/screenshots/settings.png)
+![Settings with five daily times and a separate Claude, Codex, or Both selection beside each timer](docs/screenshots/settings.png)
 
 </details>
 
@@ -83,19 +83,20 @@ open "dist/Claude Codex Timer.app"
 
 The app and bundle use **Claude Codex Timer**; the Swift package and app executable use `ClaudeCodexTimer`. Drag `Claude Codex Timer.app` to Applications to keep it there. Local builds are ad-hoc signed, not notarized for public distribution.
 
-1. In **Settings**, choose **Claude**, **Codex**, or **Both** under **Send pings to**.
+1. In **Settings**, choose **Claude**, **Codex**, or **Both** beside each timer.
 2. Check the selected CLIs are found; **Choose…** supports custom installation paths.
 3. For Claude, **Open Claude setup**, complete sign-in and explicitly trust the dedicated `~/.claude-timer` folder. Type `/exit` when finished. For Codex, **Sign in to Codex** opens the official login flow in Terminal; an existing CLI login is reused automatically.
-4. Use the provider’s **Test ping** or **Run now** to verify replies. Run now uses the saved provider selection.
-5. Choose a daily time and enable the schedule. The default is **7:00 AM local time**.
+4. Use the provider’s **Test ping** or **Run now** to verify replies. Run now pings each provider selected by any saved timer once.
+5. Choose one to five daily times in **Settings**, use **+** to add a time or **-** to remove one, select the providers beside each time, and **Save schedule**. Enable the schedule from **Overview**. The default is **7:00 AM local time**; for example, use **7:00 AM** for Claude and **5:00 PM** for Codex.
 
-Upgrading preserves settings and history. Old history entries are labeled Claude, and older settings remain Claude-only until you choose Both or Codex. The original script timer has an **Upgrade schedule** action that saves a backup and replaces its job only after the new job registers successfully. Internal data paths and the LaunchAgent identifier retain their original names for compatibility.
+Upgrading preserves settings and history, including an existing daily time and its provider selection. Old history entries are labeled Claude, and older settings remain Claude-only until you choose Both or Codex. The original script timer has an **Upgrade schedule** action that saves a backup and replaces its job only after the new jobs register successfully. Internal data paths and the first LaunchAgent identifier retain their original names for compatibility.
 
 ### Terminal shortcuts
 
 ```bash
-./install.sh                 # build, install to ~/Applications, enable saved time
+./install.sh                 # build, install to ~/Applications, enable saved times
 ./install.sh 07:30           # same, selecting a time
+./install.sh 07:00 17:00     # same, selecting two daily times (maximum five)
 ./ping.sh                   # ping all saved providers
 ./ping.sh --provider codex   # test only Codex
 ./uninstall.sh               # disable schedules; keep app, settings, and history
@@ -108,21 +109,22 @@ Upgrading preserves settings and history. Old history entries are labeled Claude
 "dist/Claude Codex Timer.app/Contents/Helpers/claude-codex-timer-runner" run --provider codex
 "dist/Claude Codex Timer.app/Contents/Helpers/claude-codex-timer-runner" status
 "dist/Claude Codex Timer.app/Contents/Helpers/claude-codex-timer-runner" enable 07:00
+"dist/Claude Codex Timer.app/Contents/Helpers/claude-codex-timer-runner" enable 07:00 09:00 12:00 17:00 21:00
 "dist/Claude Codex Timer.app/Contents/Helpers/claude-codex-timer-runner" disable
 ```
 
-`run` prints a JSON array of provider results and exits nonzero if any selected provider fails. A single-provider test does not change the saved selection.
+`run` prints a JSON array of provider results and exits nonzero if any selected provider fails. A single-provider test does not change the saved selections. The `providers` command sets the providers for every timer; individual selections are available in Settings. `enable` without times uses the saved timers. When replacing times, matching times retain their providers and new times use the combined saved provider selection.
 
 ## Scheduling and sleep
 
-A per-user macOS LaunchAgent runs the compiled helper, without `sudo`. The helper is copied outside Desktop/Documents so scheduling does not depend on the app’s location or access to the source folder. Enabling or editing the schedule does not immediately send a ping.
+A per-user macOS LaunchAgent for each timer runs the compiled helper with that timer's providers, without `sudo`. The helper is copied outside Desktop/Documents so scheduling does not depend on the app’s location or access to the source folder. Enabling or editing the schedule does not immediately send a ping.
 
 - You must be logged in; the app may be closed or quit.
-- A calendar event missed during sleep runs after wake. Multiple missed events coalesce into one. This does **not** wake the Mac; see `man launchd.plist`.
+- A calendar event missed during sleep runs after wake. Multiple missed occurrences of the same timer coalesce into one; separate timers keep their own provider selections. This does **not** wake the Mac; see `man launchd.plist`.
 - Runs missed while shut down or logged out are not guaranteed to replay.
 - Local time-zone and daylight-saving changes apply.
 - macOS background-item controls can prevent jobs from running. Loaded status cannot guarantee a future launch or network connectivity.
-- A process lock prevents overlapping batches. Each provider has a 90-second timeout; both together may take about three minutes. The timer has no retry loop.
+- A process lock prevents overlapping batches. Scheduled timers wait their turn when launches overlap, including after wake. Each provider has a 90-second timeout; both together may take about three minutes. Provider failures are not retried.
 
 ## Privacy and local files
 
@@ -135,7 +137,8 @@ Codex uses a read-only sandbox with approvals disabled, ignores user configurati
 | Location | Contents |
 | --- | --- |
 | `~/Library/Application Support/ClaudeTimer/` | Settings, last 100 provider results, lock, setup scripts, installed helper, Codex workspace, optional legacy backup |
-| `~/Library/LaunchAgents/io.claude-timer.daily.plist` | Daily schedule for selected providers |
+| `~/Library/LaunchAgents/io.claude-timer.daily.plist` | First timer and its selected providers |
+| `~/Library/LaunchAgents/io.claude-timer.daily.2.plist` through `.5.plist` | Additional timers and their selected providers |
 | `~/Library/Logs/ClaudeTimer/runner.log` | Helper diagnostic output |
 | `~/.claude-timer/` | Claude’s dedicated working folder |
 | `~/.claude/projects/…` | Claude timer transcripts, managed by Claude Code |

@@ -10,7 +10,7 @@ for RUNNER in \
   if [[ -x "$RUNNER" ]]; then exec "$RUNNER" disable; fi
 done
 # Also supports uninstalling the original scripts before building the app.
-for LABEL in io.claude-timer.daily com.juan.claude-morning-timer; do
+for LABEL in io.claude-timer.daily io.claude-timer.daily.{2..5} com.juan.claude-morning-timer; do
   if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
     launchctl bootout "gui/$(id -u)/$LABEL"
   fi

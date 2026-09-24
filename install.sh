@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build and install the app and enable the daily schedule (default 07:00).
 set -euo pipefail
-if [[ $# -gt 1 ]]; then echo "Usage: ./install.sh [HH:MM]" >&2; exit 2; fi
+if [[ $# -gt 5 ]]; then echo "Usage: ./install.sh [HH:MM ...] (up to 5 times)" >&2; exit 2; fi
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 "$PROJECT_DIR/scripts/build-app.sh"
 mkdir -p "$HOME/Applications"

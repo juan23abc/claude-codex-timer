@@ -4,13 +4,19 @@ import CPTY
 
 public final class RunLock {
     private var descriptor: Int32
-    public init(paths: AppPaths) throws {
+    public init(paths: AppPaths, waitTimeout: TimeInterval = 0) throws {
         try paths.prepare()
         descriptor = open(paths.lock.path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
         guard descriptor >= 0 else { throw TimerError("Could not open the run lock.") }
-        guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
-            close(descriptor); descriptor = -1
-            throw TimerError("A ping is already running. Wait for it to finish.")
+        let deadline = ProcessInfo.processInfo.systemUptime + waitTimeout
+        while flock(descriptor, LOCK_EX | LOCK_NB) != 0 {
+            let lockError = errno
+            guard (lockError == EWOULDBLOCK || lockError == EINTR), ct_cancel_requested() == 0,
+                  ProcessInfo.processInfo.systemUptime < deadline else {
+                close(descriptor); descriptor = -1
+                throw TimerError(ct_cancel_requested() != 0 ? "Ping cancelled." : "A ping is already running. Wait for it to finish.")
+            }
+            usleep(50_000)
         }
     }
     deinit { if descriptor >= 0 { flock(descriptor, LOCK_UN); close(descriptor) } }
@@ -28,8 +34,9 @@ public enum PingRunner {
         return try withExtendedLifetime(lock) { try runUnlocked(paths: paths, source: source, timeout: timeout, provider: provider) }
     }
 
-    public static func runSelected(paths: AppPaths = AppPaths(), source: String = "manual", timeout: TimeInterval = 90, providers: [TimerProvider]? = nil) throws -> [RunRecord] {
-        let lock = try RunLock(paths: paths)
+    public static func runSelected(paths: AppPaths = AppPaths(), source: String = "manual", timeout: TimeInterval = 90, providers: [TimerProvider]? = nil, waitForTurn: Bool = false) throws -> [RunRecord] {
+        // Independent timers can launch together after wake; serialize them without dropping a timer.
+        let lock = try RunLock(paths: paths, waitTimeout: waitForTurn ? Double(TimerSettings.maximumTimes * TimerProvider.allCases.count) * (timeout + 5) : 0)
         return try withExtendedLifetime(lock) {
             let selected = try providers ?? TimerSettings.load(paths: paths).providers
             guard !selected.isEmpty, Set(selected).count == selected.count else { throw TimerError("Choose at least one provider, without duplicates.") }

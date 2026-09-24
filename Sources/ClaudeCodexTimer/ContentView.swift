@@ -57,8 +57,14 @@ struct ContentView: View {
                     HStack(spacing: 6) { Circle().fill(model.scheduled ? Color.green : .secondary).frame(width: 6, height: 6); Text(model.scheduled ? "On" : "Off").font(.caption.weight(.medium)) }
                         .padding(.horizontal, 10).padding(.vertical, 5).background(.quaternary, in: Capsule())
                 }
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Text(model.scheduledDate, format: .dateTime.hour().minute()).font(.system(size: 52, weight: .light, design: .rounded)).monospacedDigit().accessibilityLabel("Daily time \(model.scheduledDate.formatted(date: .omitted, time: .shortened))")
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(model.scheduledTimers, id: \.time) { timer in
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(model.date(for: timer.time), format: .dateTime.hour().minute()).font(.system(size: model.scheduledTimers.count == 1 ? 52 : 28, weight: .light, design: .rounded)).monospacedDigit().accessibilityLabel("Daily time \(model.date(for: timer.time).formatted(date: .omitted, time: .shortened))")
+                            Spacer()
+                            Text(timer.providers.map(\.title).joined(separator: " + ")).font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }
                     Text("every day").font(.callout).foregroundStyle(.secondary)
                 }
                 HStack {
@@ -67,7 +73,7 @@ struct ContentView: View {
                         Text("\(model.providerSummary) · \(TimeZone.current.identifier)").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Change time") { model.selection = .settings }.accessibilityLabel("Change time")
+                    Button("Edit schedule") { model.selection = .settings }.accessibilityLabel("Edit schedule")
                 }
                 Divider()
                 HStack(spacing: 12) {
@@ -141,13 +147,30 @@ struct ContentView: View {
     }
     private var settings: some View {
         VStack(alignment: .leading, spacing: 24) {
-            heading("Make it your routine.", subtitle: "Choose your providers and a time to start the day.")
+            heading("Make it your routine.", subtitle: "Daily schedule and provider connections.")
             GroupBox {
                 VStack(alignment: .leading, spacing: 16) {
-                    DatePicker("Daily ping", selection: Binding(get: { model.date }, set: { model.date = $0 }), displayedComponents: [.hourAndMinute])
-                    Picker("Send pings to", selection: Binding(get: { model.providerChoice }, set: { model.providerChoice = $0 })) {
-                        ForEach(AppModel.ProviderChoice.allCases) { choice in Text(choice.rawValue).tag(choice) }
-                    }.pickerStyle(.segmented).disabled(model.busy || model.running)
+                    HStack {
+                        Text("Daily times").font(.subheadline.weight(.medium))
+                        Spacer()
+                        Text("\(model.settings.times.count) of \(TimerSettings.maximumTimes)").font(.caption).foregroundStyle(.secondary)
+                        Button { model.addTime() } label: { Image(systemName: "plus") }
+                            .help("Add time").accessibilityLabel("Add time")
+                            .disabled(model.busy || model.running || model.settings.times.count >= TimerSettings.maximumTimes)
+                    }
+                    ForEach(model.settings.times.indices, id: \.self) { index in
+                        HStack(spacing: 12) {
+                            DatePicker("Time \(index + 1)", selection: Binding(get: { model.date(at: index) }, set: { model.setTime(at: index, to: $0) }), displayedComponents: [.hourAndMinute])
+                                .frame(width: 170, alignment: .leading)
+                                .disabled(model.busy || model.running)
+                            Picker("Send time \(index + 1) pings to", selection: Binding(get: { model.providerChoice(at: index) }, set: { model.setProviderChoice(at: index, to: $0) })) {
+                                ForEach(AppModel.ProviderChoice.allCases) { choice in Text(choice.rawValue).tag(choice) }
+                            }.pickerStyle(.segmented).labelsHidden().disabled(model.busy || model.running)
+                            Button { model.removeTime(at: index) } label: { Image(systemName: "minus") }
+                                .help("Remove time \(index + 1)").accessibilityLabel("Remove time \(index + 1)")
+                                .disabled(model.busy || model.running || model.settings.times.count == 1)
+                        }
+                    }
                     Text("Follows this Mac’s local time zone, including daylight saving changes.").font(.caption).foregroundStyle(.secondary)
                     HStack { Spacer(); Button("Save schedule") { model.saveSettings() }.buttonStyle(.borderedProminent).disabled(model.busy || model.running) }
                 }.padding(12)

@@ -30,7 +30,8 @@ public struct AppPaths {
     public var history: URL { root.appendingPathComponent("history.json") }
     public var lock: URL { root.appendingPathComponent("run.lock") }
     public var runner: URL { root.appendingPathComponent("bin/claude-timer-runner") }
-    public var agent: URL { home.appendingPathComponent("Library/LaunchAgents/\(Scheduler.label).plist") }
+    public var agent: URL { agent(label: Scheduler.label) }
+    public func agent(label: String) -> URL { home.appendingPathComponent("Library/LaunchAgents/\(label).plist") }
     public var legacyAgent: URL { home.appendingPathComponent("Library/LaunchAgents/com.juan.claude-morning-timer.plist") }
     public var log: URL { home.appendingPathComponent("Library/Logs/ClaudeTimer/runner.log") }
 
@@ -47,29 +48,76 @@ public struct AppPaths {
     }
 }
 
-public struct TimerSettings: Codable, Equatable {
+public struct DailyTime: Codable, Hashable, Comparable {
     public var hour: Int
     public var minute: Int
+    public init(hour: Int, minute: Int = 0) { self.hour = hour; self.minute = minute }
+    public static func < (lhs: Self, rhs: Self) -> Bool {
+        (lhs.hour, lhs.minute) < (rhs.hour, rhs.minute)
+    }
+}
+
+public struct DailyTimer: Codable, Equatable {
+    public var time: DailyTime
+    public var providers: [TimerProvider]
+    public init(time: DailyTime, providers: [TimerProvider] = [.claude, .codex]) {
+        self.time = time; self.providers = providers
+    }
+}
+
+public struct TimerSettings: Codable, Equatable {
+    public static let maximumTimes = 5
+    public var timers: [DailyTimer]
     public var claudePath: String
     public var codexPath: String
-    public var providers: [TimerProvider]
-    public init(hour: Int = 7, minute: Int = 0, claudePath: String = "", codexPath: String = "", providers: [TimerProvider] = [.claude, .codex]) {
-        self.hour = hour; self.minute = minute; self.claudePath = claudePath
-        self.codexPath = codexPath; self.providers = providers
+    public var times: [DailyTime] {
+        get { timers.map(\.time) }
+        set {
+            let providers = providers
+            timers = newValue.map { time in DailyTimer(time: time, providers: timers.first(where: { $0.time == time })?.providers ?? providers) }
+        }
     }
-    private enum CodingKeys: String, CodingKey { case hour, minute, claudePath, codexPath, providers }
+    // Manual runs use the union; the CLI's providers command applies to every timer.
+    public var providers: [TimerProvider] {
+        get { TimerProvider.allCases.filter { provider in timers.contains { $0.providers.contains(provider) } } }
+        set { for index in timers.indices { timers[index].providers = newValue } }
+    }
+    public init(times: [DailyTime] = [DailyTime(hour: 7)], claudePath: String = "", codexPath: String = "", providers: [TimerProvider] = [.claude, .codex]) {
+        self.init(timers: times.map { DailyTimer(time: $0, providers: providers) }, claudePath: claudePath, codexPath: codexPath)
+    }
+    public init(timers: [DailyTimer], claudePath: String = "", codexPath: String = "") {
+        self.timers = timers; self.claudePath = claudePath; self.codexPath = codexPath
+    }
+    public init(hour: Int, minute: Int = 0, claudePath: String = "", codexPath: String = "", providers: [TimerProvider] = [.claude, .codex]) {
+        self.init(times: [DailyTime(hour: hour, minute: minute)], claudePath: claudePath, codexPath: codexPath, providers: providers)
+    }
+    private enum CodingKeys: String, CodingKey { case timers, times, hour, minute, claudePath, codexPath, providers }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        hour = try values.decode(Int.self, forKey: .hour)
-        minute = try values.decode(Int.self, forKey: .minute)
+        if values.contains(.timers) {
+            timers = try values.decode([DailyTimer].self, forKey: .timers)
+        } else {
+            // Older installs keep their original provider selection for every time.
+            let providers = try values.decodeIfPresent([TimerProvider].self, forKey: .providers) ?? [.claude]
+            let times: [DailyTime]
+            if values.contains(.times) { times = try values.decode([DailyTime].self, forKey: .times) }
+            else { times = [DailyTime(hour: try values.decode(Int.self, forKey: .hour), minute: try values.decode(Int.self, forKey: .minute))] }
+            timers = times.map { DailyTimer(time: $0, providers: providers) }
+        }
         claudePath = try values.decode(String.self, forKey: .claudePath)
         codexPath = try values.decodeIfPresent(String.self, forKey: .codexPath) ?? ""
-        // Older installs keep their original provider until explicitly changed.
-        providers = try values.decodeIfPresent([TimerProvider].self, forKey: .providers) ?? [.claude]
+    }
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(timers, forKey: .timers)
+        try values.encode(claudePath, forKey: .claudePath)
+        try values.encode(codexPath, forKey: .codexPath)
     }
     public func validate() throws {
-        guard (0...23).contains(hour), (0...59).contains(minute) else { throw TimerError("Choose a valid daily time.") }
-        guard !providers.isEmpty, Set(providers).count == providers.count else { throw TimerError("Select at least one provider, without duplicates.") }
+        guard (1...Self.maximumTimes).contains(times.count) else { throw TimerError("Choose between 1 and \(Self.maximumTimes) daily times.") }
+        guard times.allSatisfy({ (0...23).contains($0.hour) && (0...59).contains($0.minute) }) else { throw TimerError("Choose a valid daily time.") }
+        guard Set(times).count == times.count else { throw TimerError("Choose a different time for each daily ping.") }
+        guard timers.allSatisfy({ !$0.providers.isEmpty && Set($0.providers).count == $0.providers.count }) else { throw TimerError("Select at least one provider for each timer, without duplicates.") }
     }
     public static func load(paths: AppPaths) throws -> Self {
         guard FileManager.default.fileExists(atPath: paths.config.path) else {
@@ -92,7 +140,9 @@ public struct TimerSettings: Codable, Equatable {
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: paths.config.path)
     }
     public func nextRun(after date: Date = Date(), calendar: Calendar = .current) -> Date? {
-        calendar.nextDate(after: date, matching: DateComponents(hour: hour, minute: minute), matchingPolicy: .nextTime)
+        times.compactMap {
+            calendar.nextDate(after: date, matching: DateComponents(hour: $0.hour, minute: $0.minute), matchingPolicy: .nextTime)
+        }.min()
     }
 }
 

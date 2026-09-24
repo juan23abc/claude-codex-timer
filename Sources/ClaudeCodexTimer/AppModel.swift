@@ -42,20 +42,43 @@ final class AppModel: ObservableObject {
         var id: String { rawValue }
         var providers: [TimerProvider] { switch self { case .claude: return [.claude]; case .codex: return [.codex]; case .both: return [.claude, .codex] } }
     }
-    var providerChoice: ProviderChoice {
-        get { settings.providers.count == 2 ? .both : settings.providers.first == .codex ? .codex : .claude }
-        set { settings.providers = newValue.providers; saveSettings() }
+    func providerChoice(at index: Int) -> ProviderChoice {
+        guard settings.timers.indices.contains(index) else { return .both }
+        let providers = settings.timers[index].providers
+        return providers.count == 2 ? .both : providers.first == .codex ? .codex : .claude
+    }
+    func setProviderChoice(at index: Int, to choice: ProviderChoice) {
+        guard !busy, !running, settings.timers.indices.contains(index) else { return }
+        settings.timers[index].providers = choice.providers
     }
     var scheduled: Bool { enabled || legacy }
-    var date: Date {
-        get { Calendar.current.date(bySettingHour: settings.hour, minute: settings.minute, second: 0, of: Date()) ?? Date() }
-        set { let parts = Calendar.current.dateComponents([.hour, .minute], from: newValue); settings.hour = parts.hour ?? 7; settings.minute = parts.minute ?? 0 }
+    func date(for time: DailyTime) -> Date {
+        // A fixed reference day keeps editing independent of today's DST transition.
+        Calendar.current.date(from: DateComponents(year: 2001, month: 1, day: 1, hour: time.hour, minute: time.minute)) ?? Date()
+    }
+    func date(at index: Int) -> Date {
+        date(for: settings.times.indices.contains(index) ? settings.times[index] : DailyTime(hour: 7))
+    }
+    func setTime(at index: Int, to date: Date) {
+        guard !busy, !running, settings.times.indices.contains(index) else { return }
+        let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
+        settings.timers[index].time = DailyTime(hour: parts.hour ?? 7, minute: parts.minute ?? 0)
+    }
+    func addTime() {
+        guard !busy, !running, settings.times.count < TimerSettings.maximumTimes else { return }
+        if let time = [17, 12, 21, 9, 7].map({ DailyTime(hour: $0) }).first(where: { !settings.times.contains($0) }) {
+            settings.timers.append(DailyTimer(time: time, providers: settings.timers.last?.providers ?? [.claude, .codex]))
+        }
+    }
+    func removeTime(at index: Int) {
+        guard !busy, !running, settings.times.count > 1, settings.times.indices.contains(index) else { return }
+        settings.timers.remove(at: index)
     }
     var nextRun: String {
         guard scheduled, let date = savedSettings.nextRun() else { return "Enable your schedule when you’re ready." }
         return "Next ping \(date.formatted(.dateTime.weekday(.wide).hour().minute()))"
     }
-    var scheduledDate: Date { Calendar.current.date(bySettingHour: savedSettings.hour, minute: savedSettings.minute, second: 0, of: Date()) ?? Date() }
+    var scheduledTimers: [DailyTimer] { savedSettings.timers.sorted { $0.time < $1.time } }
     init() {
         #if DEBUG
         if isScreenshotPreview {
@@ -105,7 +128,11 @@ final class AppModel: ObservableObject {
         }
     }
     func saveSettings() {
-        guard !isScreenshotPreview else { return }
+        if isScreenshotPreview {
+            do { try settings.validate(); savedSettings = settings; error = nil; notice = "Settings saved." }
+            catch { self.error = error.localizedDescription }
+            return
+        }
         if scheduled { changeSchedule(enabled: true); return }
         do { try settings.save(paths: paths); savedSettings = settings; error = nil; notice = "Settings saved." }
         catch { self.error = error.localizedDescription }

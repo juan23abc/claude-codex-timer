@@ -54,7 +54,7 @@ These original identifiers deliberately remain stable for installed copies:
 
 - Bundle ID `io.claude-timer.app` preserves macOS app identity.
 - `AppPaths` keeps the `ClaudeTimer` Application Support and Logs folders, the installed `bin/claude-timer-runner`, and `~/.claude-timer` so saved data, existing schedule arguments, and Claude folder trust continue to work.
-- LaunchAgent `io.claude-timer.daily` remains the single daily job. `com.juan.claude-morning-timer` identifies the original script job for migration and removal only.
+- LaunchAgent `io.claude-timer.daily` remains the first timer's job. Additional timers use `io.claude-timer.daily.2` through `.5`, each with its own provider arguments. Changes register or roll back the entire set together. `com.juan.claude-morning-timer` identifies the original script job for migration and removal only.
 - The shell entry points recognize the older bundle/helper names. `send-hi.sh` forwards to `ping.sh`, and `CLAUDE_TIMER_SIGN_IDENTITY` remains a fallback for existing build setups.
 
 Do not rename persistent identifiers without an explicit migration that preserves saved data and avoids duplicate schedules. Use the current product names for new files, targets, commands, and documentation.
