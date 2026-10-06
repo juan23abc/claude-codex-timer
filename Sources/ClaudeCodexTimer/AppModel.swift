@@ -87,7 +87,8 @@ final class AppModel: ObservableObject {
             for day in 0..<3 {
                 for provider in TimerProvider.allCases {
                     let start = Calendar.current.date(byAdding: .day, value: -day, to: today)!.addingTimeInterval(7 * 3600)
-                    history.append(RunRecord(startedAt: start, finishedAt: start.addingTimeInterval(provider == .claude ? 3 : 2), outcome: .success, detail: "Replied with pong.", source: "scheduled", provider: provider))
+                    let window = provider == .claude ? ClaudeWindowVerification(before: .init(checkedAt: start, state: .inactive), after: .init(checkedAt: start.addingTimeInterval(12), state: .active, resetsAt: start.addingTimeInterval(5 * 3600), usedPercent: 0)) : nil
+                    history.append(RunRecord(startedAt: start, finishedAt: start.addingTimeInterval(provider == .claude ? 12 : 2), outcome: .success, detail: window?.detail ?? "Replied with pong.", source: "scheduled", provider: provider, claudeWindow: window))
                 }
             }
             return

@@ -50,92 +50,65 @@ public enum PingRunner {
     }
 
     private static func runUnlocked(paths: AppPaths, source: String, timeout: TimeInterval, provider: TimerProvider) throws -> RunRecord {
-            let start = Date()
-            let sessionID = UUID().uuidString.lowercased()
-            let result: (RunOutcome, String)
-            do {
-                let settings = try TimerSettings.load(paths: paths)
-                guard let executable = provider.resolve(settings: settings, paths: paths) else {
-                    throw TimerError("\(provider.cliTitle) was not found. Install it or choose its executable in Settings.")
-                }
-                switch provider {
-                case .claude: result = try perform(executable: executable, paths: paths, sessionID: sessionID, timeout: timeout)
-                case .codex: result = try CodexRunner.perform(executable: executable, paths: paths, timeout: timeout)
-                }
-            } catch { result = (.failed, error.localizedDescription) }
-            let record = RunRecord(id: sessionID, startedAt: start, finishedAt: Date(), outcome: result.0, detail: result.1, source: source, provider: provider)
-            try RunHistory.append(record, paths: paths)
-            return record
+        let start = Date()
+        let sessionID = UUID().uuidString.lowercased()
+        let result: (RunOutcome, String)
+        var verification: ClaudeWindowVerification?
+        // Keep this bounded background run awake through the reply and usage checks.
+        let activity = ProcessInfo.processInfo.beginActivity(options: .userInitiated, reason: "Complete scheduled ping and verify usage window")
+        defer { ProcessInfo.processInfo.endActivity(activity) }
+        do {
+            let settings = try TimerSettings.load(paths: paths)
+            guard let executable = provider.resolve(settings: settings, paths: paths) else {
+                throw TimerError("\(provider.cliTitle) was not found. Install it or choose its executable in Settings.")
+            }
+            switch provider {
+            case .claude:
+                let deadline = ProcessInfo.processInfo.systemUptime + timeout
+                let before = ClaudeUsageProbe.read(executable: executable, paths: paths, deadline: min(deadline, ProcessInfo.processInfo.systemUptime + min(12, timeout / 4)))
+                let ping = try perform(executable: executable, paths: paths, sessionID: sessionID, timeout: max(0, deadline - ProcessInfo.processInfo.systemUptime - min(18, timeout / 4)))
+                if ping.0 == .success {
+                    let after = ClaudeUsageProbe.read(executable: executable, paths: paths, deadline: deadline)
+                    let window = ClaudeWindowVerification(before: before, after: after)
+                    verification = window
+                    result = ct_cancel_requested() != 0 ? (.unverified, "Claude replied: pong. Usage verification was cancelled.") : (window.confirmed ? .success : .unverified, window.detail)
+                } else { result = ping }
+            case .codex:
+                result = try CodexRunner.perform(executable: executable, paths: paths, timeout: timeout)
+            }
+        } catch { result = (.failed, error.localizedDescription) }
+        let record = RunRecord(id: sessionID, startedAt: start, finishedAt: Date(), outcome: result.0, detail: result.1, source: source, provider: provider, claudeWindow: verification)
+        try RunHistory.append(record, paths: paths)
+        return record
     }
 
     static func perform(executable: String, paths: AppPaths, sessionID: String, timeout: TimeInterval) throws -> (RunOutcome, String) {
-        let arguments = [executable] + ClaudeCommand.arguments(sessionID: sessionID)
-        let environment = ClaudeCommand.environment(paths: paths, executable: executable).map { "\($0.key)=\($0.value)" }
-        let argv = arguments.map { strdup($0) } + [nil]
-        let envp = environment.map { strdup($0) } + [nil]
-        defer { for p in argv + envp { free(p) } }
-        var fd: Int32 = -1
-        let pid = argv.withUnsafeBufferPointer { args in
-            envp.withUnsafeBufferPointer { env in ct_spawn_pty(executable, args.baseAddress, env.baseAddress, paths.workspace.path, &fd) }
-        }
-        guard pid > 0 else { throw TimerError("Could not start Claude Code: \(String(cString: strerror(errno)))") }
-        // Close the master first. Some CLIs drain terminal output during exit;
-        // waiting before closing it can leave even a killed child stuck exiting.
-        defer { close(fd); ct_stop_pty(pid) }
+        guard ct_cancel_requested() == 0 else { return (.failed, "Ping cancelled.") }
         let deadline = ProcessInfo.processInfo.systemUptime + timeout
+        let terminal = try ClaudePTY(executable: executable, paths: paths, arguments: ClaudeCommand.arguments(sessionID: sessionID))
         let transcript = paths.transcript(sessionID: sessionID)
-        var tail = Data()
-        var queryTail = Data()
-        var buffer = [UInt8](repeating: 0, count: 16384)
+        var replyFinishedAt: TimeInterval?
         while ProcessInfo.processInfo.systemUptime < deadline {
             if ct_cancel_requested() != 0 { return (.failed, "Ping cancelled.") }
+            terminal.readOutput()
+            if let problem = terminal.problem { return problem }
             if let data = try? Data(contentsOf: transcript) {
                 switch SessionParser.parse(data, sessionID: sessionID) {
-                case .success: return (.success, "Claude replied: pong")
+                case .success:
+                    if replyFinishedAt == nil { replyFinishedAt = ProcessInfo.processInfo.systemUptime }
+                    // Allow the CLI to finish its turn before submitting /exit.
+                    if terminal.ended || ProcessInfo.processInfo.systemUptime - replyFinishedAt! >= 0.5 {
+                        terminal.exitGracefully(deadline: deadline)
+                        return (.success, "Claude replied: pong")
+                    }
                 case .failure(let detail): return (.failed, detail)
                 case .waiting: break
                 }
             }
-            let count = read(fd, &buffer, buffer.count)
-            if count > 0 {
-                let chunk = Data(buffer.prefix(count))
-                tail.append(chunk)
-                if tail.count > 65536 { tail = tail.suffix(65536) }
-                // Queries can straddle reads. Never send approval keystrokes.
-                queryTail.append(chunk)
-                let queries: [(Data, String)] = [
-                    (Data("\u{1b}[6n".utf8), "\u{1b}[1;1R"),
-                    (Data("\u{1b}[c".utf8), "\u{1b}[?1;0c"),
-                    (Data("\u{1b}]10;?\u{7}".utf8), "\u{1b}]10;rgb:c0c0/c0c0/c0c0\u{7}"),
-                    (Data("\u{1b}]11;?\u{7}".utf8), "\u{1b}]11;rgb:1e1e/1e1e/1e1e\u{7}")
-                ]
-                for (query, answer) in queries {
-                    while let range = queryTail.range(of: query) {
-                        _ = answer.withCString { write(fd, $0, answer.utf8.count) }
-                        queryTail.removeSubrange(range)
-                    }
-                }
-                queryTail = queryTail.suffix(24)
-                let plain = String(decoding: tail, as: UTF8.self).replacingOccurrences(of: "\u{1b}\\[[0-?]*[ -/]*[@-~]", with: "", options: .regularExpression).lowercased()
-                if plain.contains("yes, i trust") || plain.contains("is this a project you created") || plain.contains("choose the text style") || plain.contains("select login method") {
-                    return (.needsSetup, "Claude needs one-time setup. Click Open Claude setup, finish sign-in and trust this timer’s folder, then try again.")
-                }
-                if plain.contains("unknown option") || plain.contains("unknown argument") {
-                    return (.failed, "This Claude Code version is unsupported. Update Claude Code, then try again.")
-                }
-            } else if count == 0 || (count < 0 && errno != EAGAIN && errno != EINTR) {
-                // A final transcript write may arrive with PTY closure.
-                if let data = try? Data(contentsOf: transcript) {
-                    switch SessionParser.parse(data, sessionID: sessionID) {
-                    case .success: return (.success, "Claude replied: pong")
-                    case .failure(let detail): return (.failed, detail)
-                    case .waiting: break
-                    }
-                }
-                return (.failed, "Claude exited before a verified reply. Open Claude setup to check sign-in, your selected model, and CLI compatibility.")
-            }
-            usleep(100_000)
+            if terminal.ended { return (.failed, "Claude exited before a completed reply. Open Claude setup to check sign-in and CLI compatibility.") }
+            usleep(50_000)
         }
-        return (.timedOut, "No verified reply within \(Int(timeout)) seconds. Check your connection and complete Claude setup, then try again.")
+        if replyFinishedAt != nil { return (.success, "Claude replied: pong") }
+        return (.timedOut, "No completed reply before the timeout. Check your connection and complete Claude setup, then try again.")
     }
 }

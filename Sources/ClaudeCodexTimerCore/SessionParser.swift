@@ -22,6 +22,8 @@ public enum SessionParser {
                 return .failure(String(reply.prefix(600)).isEmpty ? "Claude returned an API error." : String(reply.prefix(600)))
             }
             guard row["entrypoint"] as? String == "cli" else { return .failure("Claude did not record an interactive CLI session.") }
+            // Transcript writes can precede stream completion. Do not tear down a live response.
+            guard message["stop_reason"] as? String == "end_turn" else { continue }
             guard !reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
             guard reply.trimmingCharacters(in: .whitespacesAndNewlines) == "pong" else {
                 return .failure("Claude replied, but did not return the expected pong. Open Claude setup to check your account or model.")

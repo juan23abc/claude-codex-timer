@@ -18,7 +18,7 @@ Choose **Claude, Codex, or both**, set up to five daily times, and let your Mac 
 
 - **Your schedule.** Set one to five distinct local daily times, choose Claude, Codex, or both for each timer, pause the schedule, or run a ping on demand.
 - **Your accounts.** Use your existing CLI sign-ins, with separate setup and tests for each provider.
-- **Clear results.** See verified replies, setup issues, timeouts, and usage-limit failures.
+- **Clear results.** Claude checks its usage window before and after each ping and records the reported reset time. See confirmed windows, unverified replies, setup issues, timeouts, and usage-limit failures.
 - **Native and local.** SwiftUI window, menu bar controls, local history, and no analytics.
 
 If it makes your mornings easier, [star the repository](https://github.com/juan23abc/claude-codex-timer) to support the project.
@@ -60,18 +60,18 @@ An independent project maintained by [juan23abc](https://github.com/juan23abc). 
 
 Each selected provider receives `Reply with exactly: pong`:
 
-- **Claude:** opens a fresh interactive CLI session. Success requires the exact session’s assistant reply to be `pong`, without an API error.
+- **Claude:** reads the built-in `/usage` screen, opens a fresh interactive CLI session, waits for a completed `pong` reply, requests a clean exit, and reads `/usage` again. Green success requires a confirmed active five-hour window after the reply. Activity distinguishes a newly started window, an existing window, and an active window whose start could not be established. A reply with an unreadable or inactive usage window is an amber result and a nonzero runner exit. Older history is labeled “window unchecked.” Both usage readings are saved with their check times and reset times.
 - **Codex:** uses the documented `codex exec --json` automation interface. Success requires a started thread, completed turn, an exact `pong` agent reply, and exit code zero. Error events and incomplete responses fail. Each call is ephemeral, so Codex does not retain its session rollout.
 
 Pings run sequentially, with a separate history entry for each provider. Expired logins, usage limits, missing executables, setup prompts, unexpected replies, and timeouts are visible failures.
 
-The original motivation was to start a usage window early in the day. **The app cannot guarantee when either provider’s window starts or resets.** Anthropic and OpenAI control usage accounting. Check the provider’s own usage display for the authoritative reset time. Pings consume account usage; API billing and subscription limits differ. The runner reuses saved CLI authentication and does not inherit API keys from the calling shell.
+The original motivation was to start a usage window early in the day. **The app cannot force either provider to start or reset a window.** Claude’s before/after checks report the provider’s actual reset time instead of assuming that a reply starts a new window. Codex currently verifies delivery only. Pings consume account usage; API billing and subscription limits differ. The runner reuses saved CLI authentication and does not inherit API keys from the calling shell.
 
 ## Requirements
 
 - macOS 13 Ventura or later.
 - Current [Claude Code](https://code.claude.com/docs/en/setup) and/or [Codex CLI](https://developers.openai.com/codex/cli), with an active login for each selected provider. You only need the CLIs you select.
-- Tested CLI versions: Claude Code **2.1.280**, Codex CLI **0.156.1**. Older releases may not support the required flags.
+- Tested CLI versions: Claude Code **2.1.283**, Codex CLI **0.156.1**. Older releases may not support the required flags or usage display.
 - To build: Xcode or Command Line Tools with Swift 5.9 or later. The app requires no third-party Swift packages, Python, Node, or Electron. Each provider CLI has its own installation requirements.
 
 ## Build and open
@@ -124,7 +124,7 @@ A per-user macOS LaunchAgent for each timer runs the compiled helper with that t
 - Runs missed while shut down or logged out are not guaranteed to replay.
 - Local time-zone and daylight-saving changes apply.
 - macOS background-item controls can prevent jobs from running. Loaded status cannot guarantee a future launch or network connectivity.
-- A process lock prevents overlapping batches. Scheduled timers wait their turn when launches overlap, including after wake. Each provider has a 90-second timeout; both together may take about three minutes. Provider failures are not retried.
+- A process lock prevents overlapping batches. Scheduled timers wait their turn when launches overlap, including after wake. Each provider has a 90-second work budget, plus bounded subprocess cleanup; both together may take about three minutes. Claude’s budget includes the usage checks. The runner prevents idle sleep while a run is in progress, but does not wake a sleeping Mac. Provider failures are not retried.
 
 ## Privacy and local files
 

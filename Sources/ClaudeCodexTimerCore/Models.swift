@@ -146,7 +146,7 @@ public struct TimerSettings: Codable, Equatable {
     }
 }
 
-public enum RunOutcome: String, Codable { case success, failed, needsSetup, timedOut }
+public enum RunOutcome: String, Codable { case success, unverified, failed, needsSetup, timedOut }
 public struct RunRecord: Codable, Identifiable {
     public var id: String
     public var startedAt: Date
@@ -155,11 +155,23 @@ public struct RunRecord: Codable, Identifiable {
     public var detail: String
     public var source: String
     public var provider: TimerProvider
-    public init(id: String = UUID().uuidString.lowercased(), startedAt: Date = Date(), finishedAt: Date = Date(), outcome: RunOutcome, detail: String, source: String, provider: TimerProvider = .claude) {
+    public var claudeWindow: ClaudeWindowVerification?
+    public init(id: String = UUID().uuidString.lowercased(), startedAt: Date = Date(), finishedAt: Date = Date(), outcome: RunOutcome, detail: String, source: String, provider: TimerProvider = .claude, claudeWindow: ClaudeWindowVerification? = nil) {
         self.id = id; self.startedAt = startedAt; self.finishedAt = finishedAt
         self.outcome = outcome; self.detail = detail; self.source = source; self.provider = provider
+        self.claudeWindow = claudeWindow
     }
-    private enum CodingKeys: String, CodingKey { case id, startedAt, finishedAt, outcome, detail, source, provider }
+    public var verifiedSuccess: Bool { outcome == .success && (provider != .claude || claudeWindow?.confirmed == true) }
+    public var title: String {
+        switch outcome {
+        case .success, .unverified:
+            return provider == .claude ? (claudeWindow?.title ?? "Ping delivered · window unchecked") : "Ping delivered"
+        case .failed: return "Ping failed"
+        case .needsSetup: return "Setup needed"
+        case .timedOut: return "Ping timed out"
+        }
+    }
+    private enum CodingKeys: String, CodingKey { case id, startedAt, finishedAt, outcome, detail, source, provider, claudeWindow }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(String.self, forKey: .id)
@@ -169,6 +181,7 @@ public struct RunRecord: Codable, Identifiable {
         detail = try values.decode(String.self, forKey: .detail)
         source = try values.decode(String.self, forKey: .source)
         provider = try values.decodeIfPresent(TimerProvider.self, forKey: .provider) ?? .claude
+        claudeWindow = try values.decodeIfPresent(ClaudeWindowVerification.self, forKey: .claudeWindow)
     }
 }
 

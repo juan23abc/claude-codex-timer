@@ -117,7 +117,7 @@ struct ContentView: View {
             }
             HStack(alignment: .top, spacing: 9) {
                 Image(systemName: "info.circle")
-                Text("Pings use the selected accounts. Anthropic and OpenAI control their usage windows; a reply does not guarantee a reset time. Your Mac must be logged in. A sleeping Mac runs the missed pings after waking.")
+                Text("Claude pings check the usage window before and after the reply. Activity shows Claude’s reported reset time. Your Mac must be logged in; a sleeping Mac runs missed pings after waking.")
             }.font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if !model.canRun || model.savedProviders.contains(where: { provider in model.history.first(where: { $0.provider == provider }).map { $0.outcome != .success } ?? false }) {
                 Button("Manage connections", systemImage: "slider.horizontal.3") { model.selection = .settings }
@@ -217,13 +217,17 @@ struct ContentView: View {
 
 struct RunRow: View {
     let record: RunRecord
-    var success: Bool { record.outcome == .success }
+    var success: Bool { record.verifiedSuccess }
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: success ? "checkmark.circle.fill" : "exclamationmark.circle.fill").font(.title3).foregroundStyle(success ? .green : .orange).padding(.top, 2)
             VStack(alignment: .leading, spacing: 6) {
-                HStack { Text(success ? "Ping delivered" : record.outcome == .needsSetup ? "Setup needed" : record.outcome == .timedOut ? "Ping timed out" : "Ping failed").font(.subheadline.weight(.semibold)); Spacer(); Text(record.startedAt, format: .dateTime.month(.abbreviated).day().hour().minute()).font(.caption).foregroundStyle(.secondary) }
+                HStack { Text(record.title).font(.subheadline.weight(.semibold)); Spacer(); Text(record.startedAt, format: .dateTime.month(.abbreviated).day().hour().minute()).font(.caption).foregroundStyle(.secondary) }
                 Text(record.detail).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                if let window = record.claudeWindow {
+                    Text("Before ping: \(window.before.summary)\nAfter ping: \(window.after.summary)")
+                        .font(.caption).monospacedDigit().foregroundStyle(.secondary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                }
                 Text("\(record.provider.title) · \(record.source.capitalized) · \(max(0, Int(record.finishedAt.timeIntervalSince(record.startedAt))))s").font(.caption2).foregroundStyle(.secondary)
             }
         }.frame(maxWidth: .infinity, alignment: .leading)

@@ -9,7 +9,7 @@ final class CoreTests: XCTestCase {
     }
     override func tearDownWithError() throws { try FileManager.default.removeItem(at: paths.home) }
     private func row(session: String = "ours", entrypoint: String = "cli", text: String = "pong", error: Bool = false) throws -> Data {
-        try JSONSerialization.data(withJSONObject: ["sessionId": session, "entrypoint": entrypoint, "type": "assistant", "isApiErrorMessage": error, "message": ["content": [["type": "text", "text": text]]]])
+        try JSONSerialization.data(withJSONObject: ["sessionId": session, "entrypoint": entrypoint, "type": "assistant", "isApiErrorMessage": error, "message": ["stop_reason": "end_turn", "content": [["type": "text", "text": text]]]])
     }
     func testAPIErrorCannotBeSuccessfulEvenIfTextIsPong() throws {
         XCTAssertEqual(SessionParser.parse(try row(text: "pong", error: true), sessionID: "ours"), .failure("pong"))
@@ -209,7 +209,8 @@ final class CoreTests: XCTestCase {
     func testPTYSuccessAndErrorAreRecorded() throws {
         try installFake(reply: "pong", apiError: false)
         let successful = try PingRunner.run(paths: paths, timeout: 3)
-        XCTAssertEqual(successful.outcome, .success)
+        XCTAssertEqual(successful.outcome, .unverified, "A pong without usage data must not claim the window started")
+        XCTAssertNotNil(successful.claudeWindow)
         try installFake(reply: "Login expired", apiError: true)
         let failed = try PingRunner.run(paths: paths, timeout: 3)
         XCTAssertEqual(failed.outcome, .failed)
@@ -348,7 +349,7 @@ final class CoreTests: XCTestCase {
     private func installFake(reply: String, apiError: Bool) throws {
         let directory = paths.transcript(sessionID: "ignored").deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let template = "{\"sessionId\":\"%s\",\"entrypoint\":\"cli\",\"type\":\"assistant\",\"isApiErrorMessage\":\(apiError),\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"\(reply)\"}]}}\\n"
+        let template = "{\"sessionId\":\"%s\",\"entrypoint\":\"cli\",\"type\":\"assistant\",\"isApiErrorMessage\":\(apiError),\"message\":{\"stop_reason\":\"end_turn\",\"content\":[{\"type\":\"text\",\"text\":\"\(reply)\"}]}}\\n"
         try installScript("""
         while [ "$#" -gt 0 ]; do
           if [ "$1" = "--session-id" ]; then shift; session="$1"; fi
